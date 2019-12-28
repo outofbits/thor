@@ -14,10 +14,10 @@ type Action interface {
     execute(nodes []Node, context ActionContext)
 }
 
-type ShutDownAction struct {
+type ShutDownWithBlockLagAction struct {
 }
 
-func (action ShutDownAction) execute(nodes []Node, context ActionContext) {
+func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionContext) {
     height, pools := max(context.BlockHeightMap)
     log.Infof("Maximum last block height '%v' reported by %v.", height, pools)
     for p := range nodes {
@@ -39,13 +39,13 @@ func shutDownNode(node Node) {
     _ = node.API.Shutdown()
 }
 
-type PoolToolAction struct {
+type PostLastTipToPoolToolAction struct {
     PoolID      string
     UserID      string
     GenesisHash string
 }
 
-func (action PoolToolAction) execute(nodes []Node, context ActionContext) {
+func (action PostLastTipToPoolToolAction) execute(nodes []Node, context ActionContext) {
     height, _ := max(context.BlockHeightMap)
     go pooltool.PostLatestTip(height, action.PoolID, action.UserID, action.GenesisHash)
 }

@@ -59,11 +59,11 @@ func main() {
                     nodes := config.GetNodesFromConfig(conf)
                     if len(nodes) > 0 {
                         m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf))
-                        m.RegisterAction(monitor.ShutDownAction{})
+                        m.RegisterAction(monitor.ShutDownWithBlockLagAction{})
                         if conf.PoolTool != nil {
                             poolToolConf := *conf.PoolTool
                             if poolToolConf.UserID != "" && poolToolConf.GenesisHash != "" && poolToolConf.PoolID != "" {
-                                m.RegisterAction(monitor.PoolToolAction{
+                                m.RegisterAction(monitor.PostLastTipToPoolToolAction{
                                     PoolID:      poolToolConf.PoolID,
                                     UserID:      poolToolConf.UserID,
                                     GenesisHash: poolToolConf.GenesisHash,
