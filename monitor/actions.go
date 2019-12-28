@@ -7,25 +7,25 @@ import (
 )
 
 type ActionContext struct {
-    BlockHeightMap map[string]uint32
+    BlockHeightMap     map[string]uint32
+    MaximumBlockHeight uint32
+    UpToDateNodes      []string
 }
 
 type Action interface {
     execute(nodes []Node, context ActionContext)
 }
 
-type ShutDownWithBlockLagAction struct {
-}
+type ShutDownWithBlockLagAction struct{}
 
 func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionContext) {
-    height, pools := max(context.BlockHeightMap)
-    log.Infof("Maximum last block height '%v' reported by %v.", height, pools)
+    log.Infof("Maximum last block height '%v' reported by %v.", context.MaximumBlockHeight, context.UpToDateNodes)
     for p := range nodes {
         peer := nodes[p]
         peerBlockHeight, found := context.BlockHeightMap[peer.Name]
         if found {
-            if peerBlockHeight < (height - peer.MaxBlockLag) {
-                log.Warnf("[%s] Pool has fallen behind %v blocks.", peer.Name, height-peerBlockHeight)
+            if peerBlockHeight < (context.MaximumBlockHeight - peer.MaxBlockLag) {
+                log.Warnf("[%s] Pool has fallen behind %v blocks.", peer.Name, context.MaximumBlockHeight-peerBlockHeight)
                 go shutDownNode(peer)
             }
         }
@@ -46,6 +46,5 @@ type PostLastTipToPoolToolAction struct {
 }
 
 func (action PostLastTipToPoolToolAction) execute(nodes []Node, context ActionContext) {
-    height, _ := max(context.BlockHeightMap)
-    go pooltool.PostLatestTip(height, action.PoolID, action.UserID, action.GenesisHash)
+    go pooltool.PostLatestTip(context.MaximumBlockHeight, action.PoolID, action.UserID, action.GenesisHash)
 }

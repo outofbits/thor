@@ -76,8 +76,13 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
                 log.Errorf("[%s] Node details cannot be fetched.", node.Name)
             }
         }
+        maxHeight, nodes := max(blockHeightMap)
         for n := range nodeMonitor.Actions {
-            go nodeMonitor.Actions[n].execute(nodeMonitor.Nodes, ActionContext{BlockHeightMap: blockHeightMap})
+            go nodeMonitor.Actions[n].execute(nodeMonitor.Nodes, ActionContext{
+                BlockHeightMap:     blockHeightMap,
+                MaximumBlockHeight: maxHeight,
+                UpToDateNodes:      nodes,
+            })
         }
         time.Sleep(time.Duration(nodeMonitor.Behaviour.IntervalInMs) * time.Millisecond)
     }
