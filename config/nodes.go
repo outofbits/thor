@@ -6,16 +6,20 @@ import (
     "github.com/sobitada/thor/monitor"
 )
 
-type PeerConfig struct {
-    Name        string `yaml:"name"`
-    APIUrl      string `yaml:"api"`
+// configuration struct for the nodes that shall
+// be watched.
+type Node struct {
+    // unique name for a node.
+    Name string `yaml:"name"`
+    // URL to the API of a node
+    APIUrl string `yaml:"api"`
+    // maximum number of blocks a node can lag behind.
     MaxBlockLag uint32 `yaml:"maxBlockLag"`
 }
 
 // extracts the node details from the configuration file.
-func GetNodesFromConfig(config Config) []monitor.Node {
+func GetNodesFromConfig(config General) []monitor.Node {
     nodeList := make([]monitor.Node, 0)
-    // peer nodes
     for i := range config.Peers {
         peerConfig := config.Peers[i]
         api, err := jor.GetAPIFromHost(peerConfig.APIUrl)

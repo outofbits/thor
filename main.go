@@ -13,10 +13,15 @@ import (
 const ApplicationName string = "thor"
 
 func printUsage() {
-    fmt.Printf("Usage:\n\t%v <config>\n\nArguments:\n\tconfig - YAML configuration for this thor instance.\n\n", ApplicationName)
+    fmt.Printf(`Usage:
+    %v <config>
+
+Arguments:
+    config - YAML configuration for this thor instance.
+`, ApplicationName)
 }
 
-func setLoggingConfiguration(config config.Config) {
+func setLoggingConfiguration(config config.General) {
     level, err := log.ParseLevel(config.Logging.Level)
     if err == nil {
         log.SetLevel(level)
@@ -31,7 +36,7 @@ func main() {
     if len(args) == 1 {
         data, err := ioutil.ReadFile(args[0])
         if err == nil {
-            var conf config.Config
+            var conf config.General
             err = yaml.UnmarshalStrict(data, &conf)
             if err == nil {
                 setLoggingConfiguration(conf)
@@ -39,6 +44,19 @@ func main() {
                 if len(nodes) > 0 {
                     m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf))
                     m.RegisterAction(monitor.ShutDownAction{})
+                    if conf.PoolTool != nil {
+                        poolToolConf := *conf.PoolTool
+                        if poolToolConf.UserID != "" && poolToolConf.GenesisHash != "" && poolToolConf.PoolID != "" {
+                            m.RegisterAction(monitor.PoolToolAction{
+                                PoolID:      poolToolConf.PoolID,
+                                UserID:      poolToolConf.UserID,
+                                GenesisHash: poolToolConf.GenesisHash,
+                            })
+                        } else {
+                            fmt.Print("Personal pool ID, pool tool user ID as well as genesis hash of the blockchain must be specified.")
+                            os.Exit(1)
+                        }
+                    }
                     m.Watch()
                 } else {
                     fmt.Printf("No passive/leader nodes specified. Nothing to do.")
