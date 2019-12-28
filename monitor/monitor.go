@@ -56,7 +56,7 @@ func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
 }
 
 func (nodeMonitor nodeMonitorImpl) Watch() {
-    log.Infof("Starting to monitor peers", )
+    log.Infof("Starting to watch nodes.", )
     for ; ; {
         blockHeightMap := make(map[string]uint32)
         for i := range nodeMonitor.Nodes {
