@@ -1,0 +1,14 @@
+logging:
+  level: info
+peers:
+  - name: "Local 1"
+    api: http://jormungandr-1:3101
+    maxBlockLag: 40
+  - name: "Local 2"
+    api: http://jormungandr-2:3101
+    maxBlockLag: 40
+  - name: "Local 3"
+    api: http://jormungandr-3:3101
+    maxBlockLag: 40
+monitor:
+  interval: 1000
