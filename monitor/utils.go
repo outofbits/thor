@@ -20,6 +20,7 @@ func max(blockHeightMap map[string]uint32) (uint32, []string) {
             } else {
                 maxHeightPeersMap[value] = []string{key}
             }
+            maxV = value
         }
     }
     peers, _ := maxHeightPeersMap[maxV]

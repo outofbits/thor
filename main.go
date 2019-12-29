@@ -58,11 +58,7 @@ func main() {
                     setLoggingConfiguration(conf)
                     nodes := config.GetNodesFromConfig(conf)
                     if len(nodes) > 0 {
-                        m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf))
-                        actions := parseActions(conf)
-                        for i := range actions {
-                            m.RegisterAction(actions[i])
-                        }
+                        m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf), parseActions(conf))
                         m.Watch()
                     } else {
                         fmt.Printf("No passive/leader nodes specified. Nothing to do.")
@@ -97,10 +93,11 @@ func parseActions(conf config.General) []monitor.Action {
         os.Exit(1)
     }
     // parse email action configuration.
-    emailActionConfig, err := config.ParseEmailActions(conf)
+    emailActionConfig, err := config.ParseEmailConfiguration(conf)
     if err == nil {
         if emailActionConfig != nil {
             actions = append(actions, monitor.ReportBlockLagPerEmailAction{Config: *emailActionConfig})
+            actions = append(actions, monitor.ReportStuckPerEmailAction{Config: *emailActionConfig})
         }
     } else {
         fmt.Print(err.Error())

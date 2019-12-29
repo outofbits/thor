@@ -2,6 +2,7 @@ package monitor
 
 import (
     log "github.com/sirupsen/logrus"
+    "github.com/sobitada/go-jormungandr/api/dto"
     jor "github.com/sobitada/go-jormungandr/wrapper"
     "strconv"
     "time"
@@ -24,15 +25,14 @@ type Node struct {
     // the maximal number of blocks this node
     // is allowed to lag behind.
     MaxBlockLag uint32
+    // maximum time since the last block has been received.
+    MaxTimeSinceLastBlock time.Duration
 }
 
 type NodeMonitor interface {
     // a blocking call which is continuously watching
     // after the Jormungandr nodes.
     Watch()
-    // registers a new action that is executed at the end
-    // of each interval.
-    RegisterAction(action Action)
 }
 
 type NodeMonitorBehaviour struct {
@@ -47,8 +47,8 @@ type nodeMonitorImpl struct {
     Actions   []Action
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour) NodeMonitor {
-    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour}
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action) NodeMonitor {
+    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions}
 }
 
 func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
@@ -59,11 +59,13 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
     log.Infof("Starting to watch nodes.", )
     for ; ; {
         blockHeightMap := make(map[string]uint32)
+        lastBlockMap := make(map[string]dto.NodeStatistic)
         for i := range nodeMonitor.Nodes {
             node := nodeMonitor.Nodes[i]
             nodeStats, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
             if err == nil && nodeStats != nil {
                 if nodeStats.LastBlockHeight != "" {
+                    lastBlockMap[node.Name] = *nodeStats
                     log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight,
                         nodeStats.LastBlockDate,
                         nodeStats.LastBlockHash[:8],
@@ -86,6 +88,7 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
                 BlockHeightMap:     blockHeightMap,
                 MaximumBlockHeight: maxHeight,
                 UpToDateNodes:      nodes,
+                LastBlockMap:       lastBlockMap,
             })
         }
         time.Sleep(time.Duration(nodeMonitor.Behaviour.IntervalInMs) * time.Millisecond)

@@ -4,9 +4,12 @@ import (
     "fmt"
     "net/http"
     "net/url"
+    "time"
 )
 
 const poolToolTipURL string = "https://tamoq3vkbl.execute-api.us-west-2.amazonaws.com/prod/sharemytip"
+// team of Pool Tool asked to keep rate at one minute.
+const tipPostLimitInMs time.Duration = 6000 * time.Millisecond
 
 type PoolToolAPIException struct {
     URL        string
