@@ -1,5 +1,10 @@
 package monitor
 
+import (
+    "github.com/hako/durafmt"
+    "time"
+)
+
 // scans the map of peers with their reported block height, and
 // then returns the highest reported block height as well as a
 // list of peers (more specifically their name) that reported
@@ -19,4 +24,14 @@ func max(blockHeightMap map[string]uint32) (uint32, []string) {
     }
     peers, _ := maxHeightPeersMap[maxV]
     return maxV, peers
+}
+
+// transforms the given up time into a human readable string.
+func getHumanReadableUpTime(upTime time.Duration) string {
+    fmt := durafmt.Parse(upTime)
+    if fmt != nil {
+        return fmt.String()
+    } else {
+        return "NA"
+    }
 }

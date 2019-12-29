@@ -64,7 +64,11 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
             nodeStats, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
             if err == nil && nodeStats != nil {
                 if nodeStats.LastBlockHeight != "" {
-                    log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>", node.Name, nodeStats.LastBlockHeight, nodeStats.LastBlockDate, nodeStats.LastBlockHash[:8])
+                    log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight,
+                        nodeStats.LastBlockDate,
+                        nodeStats.LastBlockHash[:8],
+                        getHumanReadableUpTime(time.Duration(nodeStats.UpTime)*time.Second),
+                    )
                     bH, err := strconv.Atoi(nodeStats.LastBlockHeight)
                     if err == nil {
                         blockHeightMap[node.Name] = uint32(bH)
