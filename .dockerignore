@@ -1,0 +1,8 @@
+*.yaml
+thor
+docs/
+demo/
+.gitignore
+LICENSE
+Makefile
+*.md

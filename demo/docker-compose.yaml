@@ -38,7 +38,7 @@ services:
       - node-data-3:/data
       - ./node-config-3.yaml:/conf/node-config.yaml
   monitor:
-    image: adalove/thor:0.1.0
+    build: ../
     restart: always
     command: ["/conf/thor.yaml"]
     volumes:
