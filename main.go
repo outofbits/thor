@@ -59,19 +59,9 @@ func main() {
                     nodes := config.GetNodesFromConfig(conf)
                     if len(nodes) > 0 {
                         m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf))
-                        m.RegisterAction(monitor.ShutDownWithBlockLagAction{})
-                        if conf.PoolTool != nil {
-                            poolToolConf := *conf.PoolTool
-                            if poolToolConf.UserID != "" && poolToolConf.GenesisHash != "" && poolToolConf.PoolID != "" {
-                                m.RegisterAction(monitor.PostLastTipToPoolToolAction{
-                                    PoolID:      poolToolConf.PoolID,
-                                    UserID:      poolToolConf.UserID,
-                                    GenesisHash: poolToolConf.GenesisHash,
-                                })
-                            } else {
-                                fmt.Print("Personal pool ID, pool tool user ID as well as genesis hash of the blockchain must be specified.")
-                                os.Exit(1)
-                            }
+                        actions := parseActions(conf)
+                        for i := range actions {
+                            m.RegisterAction(actions[i])
                         }
                         m.Watch()
                     } else {
@@ -91,4 +81,30 @@ func main() {
             os.Exit(1)
         }
     }
+}
+
+func parseActions(conf config.General) []monitor.Action {
+    actions := make([]monitor.Action, 0)
+    actions = append(actions, monitor.ShutDownWithBlockLagAction{})
+    // parse pool tool action configuration
+    poolToolActionConfig, err := config.ParsePostLastTipToPoolToolAction(conf)
+    if err == nil {
+        if poolToolActionConfig != nil {
+            actions = append(actions, monitor.PostLastTipToPoolToolAction{Config: *poolToolActionConfig})
+        }
+    } else {
+        fmt.Print(err.Error())
+        os.Exit(1)
+    }
+    // parse email action configuration.
+    emailActionConfig, err := config.ParseEmailActions(conf)
+    if err == nil {
+        if emailActionConfig != nil {
+            actions = append(actions, monitor.ReportBlockLagPerEmailAction{Config: *emailActionConfig})
+        }
+    } else {
+        fmt.Print(err.Error())
+        os.Exit(1)
+    }
+    return actions
 }
