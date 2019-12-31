@@ -64,17 +64,21 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
         for i := range nodeMonitor.Nodes {
             node := nodeMonitor.Nodes[i]
             nodeStats, bootstrapping, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
-            if err == nil && nodeStats != nil {
+            if err == nil {
                 if !bootstrapping {
-                    lastBlockMap[node.Name] = *nodeStats
-                    log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight.String(),
-                        nodeStats.LastBlockSlotDate.String(),
-                        nodeStats.LastBlockHash[:8],
-                        getHumanReadableUpTime(nodeStats.UpTime),
-                    )
-                    blockHeightMap[node.Name] = &nodeStats.LastBlockHeight
+                    if nodeStats != nil {
+                        lastBlockMap[node.Name] = *nodeStats
+                        log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight.String(),
+                            nodeStats.LastBlockSlotDate.String(),
+                            nodeStats.LastBlockHash[:8],
+                            getHumanReadableUpTime(nodeStats.UpTime),
+                        )
+                        blockHeightMap[node.Name] = &nodeStats.LastBlockHeight
+                    } else {
+                        log.Errorf("[%s] Node details cannot be fetched.", node.Name)
+                    }
                 } else {
-                    log.Infof("[%s] ---", node.Name)
+                    log.Infof("[%s] --- bootstrapping ---", node.Name)
                 }
             } else {
                 log.Errorf("[%s] Node details cannot be fetched.", node.Name)
