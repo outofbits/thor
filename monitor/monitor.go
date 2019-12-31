@@ -5,6 +5,7 @@ import (
     jor "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/go-jormungandr/cardano"
     "math/big"
+    "strings"
     "time"
 )
 
@@ -85,6 +86,7 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
             }
         }
         maxHeight, nodes := max(blockHeightMap)
+        log.Infof("Maximum last block height '%v' reported by [%v].", maxHeight, strings.Join(nodes, ", "))
         for n := range nodeMonitor.Actions {
             go nodeMonitor.Actions[n].execute(nodeMonitor.Nodes, ActionContext{
                 TimeSettings:       nodeMonitor.TimeSettings,

@@ -27,7 +27,6 @@ type Action interface {
 type ShutDownWithBlockLagAction struct{}
 
 func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionContext) {
-    log.Infof("Maximum last block height '%v' reported by %v.", context.MaximumBlockHeight, context.UpToDateNodes)
     for p := range nodes {
         peer := nodes[p]
         if peer.MaxBlockLag == 0 { // ignore nodes that have not set a max block lag.
