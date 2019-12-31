@@ -4,10 +4,6 @@ Thor is a tool for monitoring a swarm of jormungandr nodes and keeping them all 
 node is continuously compared to the latest tip reported by other nodes and if a node
 falls behind a specified number `x` of blocks, then a specified action is taken (e.g. shut down, logging, email report, etc.).
 
-![The last battle of Thor](docs/images/thor-jormungandr.jpg)
-
-Credit for Image: [Sasin](https://www.deviantart.com/sasin)
-
 ## Build
 You need to have the Go language installed on your machine; instructions are [here](https://golang.org/doc/install#install). Then
 you have to fetch the source code of this repository, which can be done with the following command.
@@ -42,15 +38,24 @@ checked as well as the logging level.
 ```
 logging:
   level: info
+blockchain:
+  genesisBlockHash: "8e4d2a343f3dcf9330ad9035b3e8d168e6728904262f2c434a4f8f934ec7b676"
+  genesisBlockTime: "2019-12-13T19:13:37+00:00"
+  slotsPerEpoch: 43200
+  slotDuration: 2000
 peers:
-  - name: "eu-central-1"
-    api: http://10.0.0.2:3031
+  - name: "Local 1"
+    api: http://jormungandr-1:3101
     maxBlockLag: 10
-  - name: "us-south-east-1"
-    api: http://10.0.0.3:3031
+  - name: "Local 2"
+    api: http://jormungandr-2:3101
     maxBlockLag: 10
+    maxTimeSinceLastBlock: 60000
+  - name: "Local 3"
+    api: http://jormungandr-3:3101
+    maxTimeSinceLastBlock: 60000
 monitor:
-  interval: 1000 # in ms
+  interval: 1000
 ```
 
 At the moment only one action is available and that is "shut down". You should have a setup of your jormungandr node in
