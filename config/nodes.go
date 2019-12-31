@@ -2,7 +2,7 @@ package config
 
 import (
     log "github.com/sirupsen/logrus"
-    jor "github.com/sobitada/go-jormungandr/wrapper"
+    jor "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/thor/monitor"
     "time"
 )
@@ -15,7 +15,7 @@ type Node struct {
     // URL to the API of a node
     APIUrl string `yaml:"api"`
     // maximum number of blocks a node can lag behind.
-    MaxBlockLag uint32 `yaml:"maxBlockLag"`
+    MaxBlockLag uint64 `yaml:"maxBlockLag"`
     // maximum time in ms since the last block has been received.
     MaxTimeSinceLastBlockInMs int64 `yaml:"maxTimeSinceLastBlock"`
 }
@@ -36,7 +36,7 @@ func GetNodesFromConfig(config General) []monitor.Node {
             if peerConfig.MaxTimeSinceLastBlockInMs > 0 {
                 maxTimeSinceLastBlock = time.Duration(peerConfig.MaxTimeSinceLastBlockInMs) * time.Millisecond
             } else {
-                log.Warnf("Node '%v' has not set any maximum time since last block has been received.", peerConfig.Name)
+                log.Warnf("Node '%v' has not set any maximum time since new block has been received.", peerConfig.Name)
             }
             nodeList = append(nodeList, monitor.Node{
                 Type:                  monitor.Passive,

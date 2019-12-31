@@ -2,9 +2,9 @@ package monitor
 
 import (
     log "github.com/sirupsen/logrus"
-    "github.com/sobitada/go-jormungandr/api/dto"
-    jor "github.com/sobitada/go-jormungandr/wrapper"
-    "strconv"
+    jor "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/go-jormungandr/cardano"
+    "math/big"
     "time"
 )
 
@@ -24,7 +24,7 @@ type Node struct {
     API jor.JormungandrAPI
     // the maximal number of blocks this node
     // is allowed to lag behind.
-    MaxBlockLag uint32
+    MaxBlockLag uint64
     // maximum time since the last block has been received.
     MaxTimeSinceLastBlock time.Duration
 }
@@ -42,13 +42,14 @@ type NodeMonitorBehaviour struct {
 }
 
 type nodeMonitorImpl struct {
-    Nodes     []Node
-    Behaviour NodeMonitorBehaviour
-    Actions   []Action
+    Nodes        []Node
+    Behaviour    NodeMonitorBehaviour
+    Actions      []Action
+    TimeSettings *cardano.TimeSettings
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action) NodeMonitor {
-    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions}
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings) NodeMonitor {
+    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions, TimeSettings: settings}
 }
 
 func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
@@ -56,25 +57,22 @@ func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
 }
 
 func (nodeMonitor nodeMonitorImpl) Watch() {
-    log.Infof("Starting to watch nodes.", )
+    log.Infof("Starting to watch nodes.")
     for ; ; {
-        blockHeightMap := make(map[string]uint32)
-        lastBlockMap := make(map[string]dto.NodeStatistic)
+        blockHeightMap := make(map[string]*big.Int)
+        lastBlockMap := make(map[string]jor.NodeStatistic)
         for i := range nodeMonitor.Nodes {
             node := nodeMonitor.Nodes[i]
-            nodeStats, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
+            nodeStats, bootstrapping, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
             if err == nil && nodeStats != nil {
-                if nodeStats.LastBlockHeight != "" {
+                if !bootstrapping {
                     lastBlockMap[node.Name] = *nodeStats
-                    log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight,
-                        nodeStats.LastBlockDate,
+                    log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight.String(),
+                        nodeStats.LastBlockSlotDate.String(),
                         nodeStats.LastBlockHash[:8],
-                        getHumanReadableUpTime(time.Duration(nodeStats.UpTime)*time.Second),
+                        getHumanReadableUpTime(nodeStats.UpTime),
                     )
-                    bH, err := strconv.Atoi(nodeStats.LastBlockHeight)
-                    if err == nil {
-                        blockHeightMap[node.Name] = uint32(bH)
-                    }
+                    blockHeightMap[node.Name] = &nodeStats.LastBlockHeight
                 } else {
                     log.Infof("[%s] ---", node.Name)
                 }
@@ -85,6 +83,7 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
         maxHeight, nodes := max(blockHeightMap)
         for n := range nodeMonitor.Actions {
             go nodeMonitor.Actions[n].execute(nodeMonitor.Nodes, ActionContext{
+                TimeSettings:       nodeMonitor.TimeSettings,
                 BlockHeightMap:     blockHeightMap,
                 MaximumBlockHeight: maxHeight,
                 UpToDateNodes:      nodes,

@@ -2,6 +2,7 @@ package pooltool
 
 import (
     "fmt"
+    "math/big"
     "net/http"
     "net/url"
     "time"
@@ -25,14 +26,14 @@ func (e PoolToolAPIException) Error() string {
 // the given pool tool configuration, which specifies the user
 // id, pool id and the genesis of the block chain for which the
 // tip shall be registered.
-func PostLatestTip(tip uint32, poolID string, userID string, genesisHash string) error {
+func PostLatestTip(tip *big.Int, poolID string, userID string, genesisHash string) error {
     u, err := url.Parse(poolToolTipURL)
     if err == nil {
         q := u.Query()
         q.Set("poolid", poolID)
         q.Set("userid", userID)
         q.Set("genesispref", genesisHash)
-        q.Set("mytip", fmt.Sprint(tip))
+        q.Set("mytip", tip.String())
         u.RawQuery = q.Encode()
         response, err := http.Get(u.String())
         if err == nil {
