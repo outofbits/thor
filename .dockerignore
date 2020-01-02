@@ -6,3 +6,4 @@ demo/
 LICENSE
 Makefile
 *.md
+build/
