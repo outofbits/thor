@@ -13,11 +13,11 @@ import (
 )
 
 type ActionContext struct {
-    TimeSettings       *cardano.TimeSettings
-    BlockHeightMap     map[string]*big.Int
-    MaximumBlockHeight *big.Int
-    UpToDateNodes      []string
-    LastBlockMap       map[string]jor.NodeStatistic
+    TimeSettings         *cardano.TimeSettings
+    BlockHeightMap       map[string]*big.Int
+    MaximumBlockHeight   *big.Int
+    UpToDateNodes        []string
+    LastNodeStatisticMap map[string]jor.NodeStatistic
 }
 
 type Action interface {
@@ -74,6 +74,31 @@ type ReportBlockLagPerEmailAction struct {
     Config EmailActionConfig
 }
 
+const latestBlockMessage string = `
+Latest Block
+------------
+UpTime: %v
+Received Blocks: %v
+Received Transactions: %v
+SlotDate: %v
+Height: %v
+Hash: %v
+`
+
+func getLatestBlockMessage(nodeStatistic jor.NodeStatistic) string {
+    return fmt.Sprintf(latestBlockMessage, nodeStatistic.UpTime.String(), nodeStatistic.ReceivedBlocks.String(),
+        nodeStatistic.ReceivedTransactions.String(), nodeStatistic.LastBlockSlotDate.String(),
+        nodeStatistic.LastBlockHeight.String(), nodeStatistic.LastBlockHash)
+}
+
+const blockLagMessage string = `
+Node '%v' has fallen behind %v blocks.
+
+Timestamp: %v
+
+%v
+`
+
 func (action ReportBlockLagPerEmailAction) execute(nodes []Node, context ActionContext) {
     for p := range nodes {
         peer := nodes[p]
@@ -85,7 +110,7 @@ func (action ReportBlockLagPerEmailAction) execute(nodes []Node, context ActionC
             lag := new(big.Int).Sub(context.MaximumBlockHeight, peerBlockHeight)
             if lag.Cmp(new(big.Int).SetUint64(peer.MaxBlockLag)) >= 0 {
                 go sendEmailReport(action.Config, fmt.Sprintf("[THOR][%v] Report of Block Lag.", peer.Name),
-                    fmt.Sprintf("Node '%v' has fallen behind %v blocks.", peer.Name, lag))
+                    fmt.Sprintf(blockLagMessage, peer.Name, lag, time.Now(), getLatestBlockMessage(context.LastNodeStatisticMap[peer.Name])))
             }
         }
     }
@@ -97,7 +122,7 @@ func (action ShutDownWhenStuck) execute(nodes []Node, context ActionContext) {
     if context.TimeSettings != nil {
         for p := range nodes {
             peer := nodes[p]
-            lastBlock, found := context.LastBlockMap[peer.Name]
+            lastBlock, found := context.LastNodeStatisticMap[peer.Name]
             if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a max duration.
                 continue
             }
@@ -117,11 +142,19 @@ type ReportStuckPerEmailAction struct {
     Config EmailActionConfig
 }
 
+const stuckMessage string = `
+Node '%v' most recent block was computed at %v.
+
+Timestamp: %v
+
+%v
+`
+
 func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionContext) {
     if context.TimeSettings != nil {
         for p := range nodes {
             peer := nodes[p]
-            lastBlock, found := context.LastBlockMap[peer.Name]
+            lastBlock, found := context.LastNodeStatisticMap[peer.Name]
             if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a max duration.
                 continue
             }
@@ -129,7 +162,9 @@ func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionCont
                 mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockSlotDate, *context.TimeSettings)
                 diff := time.Now().Sub(mostRecentBlockDate.GetEndDateTime())
                 if diff > peer.MaxTimeSinceLastBlock {
-                    sendEmailReport(action.Config, fmt.Sprintf("[THOR][%v] Report Blockchain Stuck.", peer.Name), "")
+                    sendEmailReport(action.Config, fmt.Sprintf("[THOR][%v] Report Blockchain Stuck.", peer.Name),
+                        fmt.Sprintf(stuckMessage, peer.Name, mostRecentBlockDate.GetStartDateTime().String(),
+                            time.Now().String(), getLatestBlockMessage(context.LastNodeStatisticMap[peer.Name])))
                 }
             }
         }
