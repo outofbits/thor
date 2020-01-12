@@ -1,7 +1,6 @@
 package pooltool
 
 import (
-    "fmt"
     log "github.com/sirupsen/logrus"
     "math/big"
     "net/http"
@@ -24,18 +23,9 @@ type PoolTool struct {
     latestTip   *big.Int
 }
 
+// constructs a new pool tool with the given configuration.
 func GetPoolTool(poolID string, userID string, genesisHash string) *PoolTool {
     return &PoolTool{poolID: poolID, userID: userID, genesisHash: genesisHash, latestTip: nil}
-}
-
-type poolToolAPIException struct {
-    URL        string
-    StatusCode int
-    Reason     string
-}
-
-func (e poolToolAPIException) Error() string {
-    return fmt.Sprintf("Pool Tool API method '%v' failed with status code %v. %v", e.URL, e.StatusCode, e.Reason)
 }
 
 // informs pool tool about the latest block height.
