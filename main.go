@@ -4,7 +4,7 @@ import (
     "flag"
     "fmt"
     log "github.com/sirupsen/logrus"
-    "github.com/sobitada/go-jormungandr/cardano"
+    "github.com/sobitada/go-cardano"
     "github.com/sobitada/thor/config"
     "github.com/sobitada/thor/monitor"
     "gopkg.in/yaml.v2"
@@ -13,7 +13,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.1.1"
+const ApplicationVersion string = "0.2.0-SNAPSHOT"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -66,7 +66,18 @@ func main() {
                                 log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
                             }
                         }
-                        m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf), parseActions(conf), blockChainSettings)
+                        // Pool Tool
+                        poolTool, err := config.ParsePoolToolConfig(conf)
+                        if err != nil {
+                            fmt.Print(err.Error())
+                            os.Exit(1)
+                        }
+                        if poolTool != nil {
+                            go poolTool.Start()
+                        }
+                        // Monitor
+                        m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf), parseActions(conf),
+                            blockChainSettings, poolTool)
                         m.Watch()
                     } else {
                         fmt.Printf("No passive/leader nodes specified. Nothing to do.")
@@ -92,15 +103,7 @@ func parseActions(conf config.General) []monitor.Action {
     actions = append(actions, monitor.ShutDownWithBlockLagAction{})
     actions = append(actions, monitor.ShutDownWhenStuck{})
     // parse pool tool action configuration
-    poolToolActionConfig, err := config.ParsePostLastTipToPoolToolAction(conf)
-    if err == nil {
-        if poolToolActionConfig != nil {
-            actions = append(actions, monitor.PostLastTipToPoolToolAction{Config: *poolToolActionConfig})
-        }
-    } else {
-        fmt.Print(err.Error())
-        os.Exit(1)
-    }
+
     // parse email action configuration.
     emailActionConfig, err := config.ParseEmailConfiguration(conf)
     if err == nil {

@@ -10,6 +10,7 @@ type General struct {
     PoolTool   *PoolTool   `yaml:"pooltool"`
     Email      *Email              `yaml:"email"`
     Blockchain *BlockchainSettings `yaml:"blockchain"`
+    Prometheus *Prometheus `yaml:"prometheus"`
 }
 
 type ConfigurationError struct {

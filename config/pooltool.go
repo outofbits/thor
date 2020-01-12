@@ -1,7 +1,7 @@
 package config
 
 import (
-    "github.com/sobitada/thor/monitor"
+    "github.com/sobitada/thor/pooltool"
 )
 
 // configuration struct for PoolTool
@@ -13,16 +13,12 @@ type PoolTool struct {
     PoolID string `yaml:"poolID"`
 }
 
-func ParsePostLastTipToPoolToolAction(conf General) (*monitor.PoolToolActionConfig, error) {
+func ParsePoolToolConfig(conf General) (*pooltool.PoolTool, error) {
     if conf.PoolTool != nil {
         poolToolConf := *conf.PoolTool
         if poolToolConf.UserID != "" && poolToolConf.PoolID != "" {
             if conf.Blockchain != nil && conf.Blockchain.GenesisBlockHash != "" {
-                return &monitor.PoolToolActionConfig{
-                    PoolID:      poolToolConf.PoolID,
-                    UserID:      poolToolConf.UserID,
-                    GenesisHash: conf.Blockchain.GenesisBlockHash,
-                }, nil
+                return pooltool.GetPoolTool(poolToolConf.PoolID, poolToolConf.UserID, conf.Blockchain.GenesisBlockHash), nil
             } else {
                 return nil, ConfigurationError{Path: "blockchain/genesisBlockHash", Reason: "The hash of the genesis block must be specified for Pool Tool actions."}
             }

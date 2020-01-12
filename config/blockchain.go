@@ -1,7 +1,8 @@
 package config
 
 import (
-    "github.com/sobitada/go-jormungandr/cardano"
+    "github.com/sobitada/go-cardano"
+    "math/big"
     "time"
 )
 
@@ -16,7 +17,7 @@ func GetTimeSettings(conf BlockchainSettings) (*cardano.TimeSettings, error) {
     if conf.SlotsPerEpoch > 0 && conf.SlotDurationInMs > 0 {
         return &cardano.TimeSettings{
             GenesisBlockDateTime: conf.GenesisBlockDateTime,
-            SlotsPerEpoch:        conf.SlotsPerEpoch,
+            SlotsPerEpoch:        new(big.Int).SetUint64(conf.SlotsPerEpoch),
             SlotDuration:         time.Millisecond * time.Duration(conf.SlotDurationInMs),
         }, nil
     } else {

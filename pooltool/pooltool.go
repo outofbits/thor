@@ -2,6 +2,7 @@ package pooltool
 
 import (
     "fmt"
+    log "github.com/sirupsen/logrus"
     "math/big"
     "net/http"
     "net/url"
@@ -9,30 +10,60 @@ import (
 )
 
 const poolToolTipURL string = "https://tamoq3vkbl.execute-api.us-west-2.amazonaws.com/prod/sharemytip"
-// team of Pool Tool asked to keep rate at one minute.
-const tipPostLimitInMs time.Duration = 6000 * time.Millisecond
 
-type PoolToolAPIException struct {
+// team of Pool Tool asked to keep rate low.
+const tipPostLimit time.Duration = 30 * time.Second
+
+// Pool Tool object, which specifies the user
+// id, pool id and the hash of the genesis
+// block.
+type PoolTool struct {
+    poolID      string
+    userID      string
+    genesisHash string
+    latestTip   *big.Int
+}
+
+func GetPoolTool(poolID string, userID string, genesisHash string) *PoolTool {
+    return &PoolTool{poolID: poolID, userID: userID, genesisHash: genesisHash, latestTip: nil}
+}
+
+type poolToolAPIException struct {
     URL        string
     StatusCode int
     Reason     string
 }
 
-func (e PoolToolAPIException) Error() string {
+func (e poolToolAPIException) Error() string {
     return fmt.Sprintf("Pool Tool API method '%v' failed with status code %v. %v", e.URL, e.StatusCode, e.Reason)
 }
 
-// posts the given block height to the pool tool API using
-// the given pool tool configuration, which specifies the user
-// id, pool id and the genesis of the block chain for which the
-// tip shall be registered.
-func PostLatestTip(tip *big.Int, poolID string, userID string, genesisHash string) error {
+// informs pool tool about the latest block height.
+func (poolTool *PoolTool) PushLatestTip(tip *big.Int) {
+    poolTool.latestTip = tip
+}
+
+// starts the pool tool update client.
+func (poolTool *PoolTool) Start() {
+    for ; ; {
+        if poolTool.latestTip != nil && poolTool.latestTip.Cmp(new(big.Int).SetUint64(0)) > 0 {
+            err := poolTool.postLatestTip(poolTool.latestTip)
+            if err != nil {
+                log.Warnf("Could not post to pool tool. %v", err.Error())
+            }
+        }
+        time.Sleep(tipPostLimit)
+    }
+}
+
+// posts the given block height to the pool tool API.
+func (poolTool *PoolTool) postLatestTip(tip *big.Int) error {
     u, err := url.Parse(poolToolTipURL)
     if err == nil {
         q := u.Query()
-        q.Set("poolid", poolID)
-        q.Set("userid", userID)
-        q.Set("genesispref", genesisHash)
+        q.Set("poolid", poolTool.poolID)
+        q.Set("userid", poolTool.userID)
+        q.Set("genesispref", poolTool.genesisHash)
         q.Set("mytip", tip.String())
         u.RawQuery = q.Encode()
         response, err := http.Get(u.String())
@@ -40,7 +71,7 @@ func PostLatestTip(tip *big.Int, poolID string, userID string, genesisHash strin
             if response.StatusCode == 200 {
                 return nil
             } else {
-                return PoolToolAPIException{URL: poolToolTipURL, StatusCode: response.StatusCode, Reason: response.Status}
+                return poolToolAPIException{URL: poolToolTipURL, StatusCode: response.StatusCode, Reason: response.Status}
             }
         }
         return err

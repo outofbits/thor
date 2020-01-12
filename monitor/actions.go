@@ -3,9 +3,8 @@ package monitor
 import (
     "fmt"
     log "github.com/sirupsen/logrus"
+    "github.com/sobitada/go-cardano"
     jor "github.com/sobitada/go-jormungandr/api"
-    "github.com/sobitada/go-jormungandr/cardano"
-    "github.com/sobitada/thor/pooltool"
     "math/big"
     "net/smtp"
     "strings"
@@ -49,20 +48,6 @@ func shutDownNode(node Node) {
     _ = node.API.Shutdown()
 }
 
-type PoolToolActionConfig struct {
-    PoolID      string
-    UserID      string
-    GenesisHash string
-}
-
-type PostLastTipToPoolToolAction struct {
-    Config PoolToolActionConfig
-}
-
-func (action PostLastTipToPoolToolAction) execute(nodes []Node, context ActionContext) {
-    go pooltool.PostLatestTip(context.MaximumBlockHeight, action.Config.PoolID, action.Config.UserID, action.Config.GenesisHash)
-}
-
 type EmailActionConfig struct {
     SourceAddress        string
     DestinationAddresses []string
@@ -87,8 +72,8 @@ Hash: %v
 
 func getLatestBlockMessage(nodeStatistic jor.NodeStatistic) string {
     return fmt.Sprintf(latestBlockMessage, nodeStatistic.UpTime.String(), nodeStatistic.ReceivedBlocks.String(),
-        nodeStatistic.ReceivedTransactions.String(), nodeStatistic.LastBlockSlotDate.String(),
-        nodeStatistic.LastBlockHeight.String(), nodeStatistic.LastBlockHash)
+        nodeStatistic.ReceivedTransactions.String(), nodeStatistic.LastBlockDate.String(),
+        nodeStatistic.LastBlockHeight, nodeStatistic.LastBlockHash)
 }
 
 const blockLagMessage string = `
@@ -127,7 +112,7 @@ func (action ShutDownWhenStuck) execute(nodes []Node, context ActionContext) {
                 continue
             }
             if found {
-                mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockSlotDate, *context.TimeSettings)
+                mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockDate, *context.TimeSettings)
                 diff := time.Now().Sub(mostRecentBlockDate.GetEndDateTime())
                 if diff > peer.MaxTimeSinceLastBlock {
                     log.Warnf("[%s] Most recent received block is %v old.", peer.Name, getHumanReadableUpTime(diff))
@@ -159,7 +144,7 @@ func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionCont
                 continue
             }
             if found {
-                mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockSlotDate, *context.TimeSettings)
+                mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockDate, *context.TimeSettings)
                 diff := time.Now().Sub(mostRecentBlockDate.GetEndDateTime())
                 if diff > peer.MaxTimeSinceLastBlock {
                     sendEmailReport(action.Config, fmt.Sprintf("[THOR][%v] Report Blockchain Stuck.", peer.Name),
