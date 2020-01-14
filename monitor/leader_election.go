@@ -3,6 +3,7 @@ package monitor
 import (
     "fmt"
     log "github.com/sirupsen/logrus"
+    "github.com/sobitada/go-cardano"
     "github.com/sobitada/go-jormungandr/api"
     "math/big"
     "strings"
@@ -31,10 +32,18 @@ type LeaderJuryConfig struct {
     // the time window in front of a scheduled
     // block in which no leader change is allowed.
     ExclusionZone time.Duration
+    // specifies the number of slots after an epoch
+    // turn over in which no leader change is allowed.
+    EpochTurnOverExclusionSlots *big.Int
+    // time settings for the blockchain such as
+    // creation time of the genesis block, slots
+    // per epoch and slot duration.
+    TimeSettings *cardano.TimeSettings
 }
 
 // gets the leader jury judging the given nodes. it expects the certificate of the
-// leader that shall be managed and configuration details.
+// leader that shall be managed and configuration details. moreover, the time
+// settings for the blockhain is needed to handle epoch turn overs.
 func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, config LeaderJuryConfig) *LeaderJury {
     c := make(chan map[string]api.NodeStatistic)
     nodeMap := make(map[string]Node)
@@ -64,40 +73,82 @@ func (jury *LeaderJury) scanForLeader() *currentLeader {
     return nil
 }
 
-//
+// gets the current schedule.
 func getSchedule(node Node, epoch *big.Int, scheduleMap *map[string][]api.LeaderAssignment) []api.LeaderAssignment {
     _, found := (*scheduleMap)[epoch.String()]
     if !found {
         schedule, err := node.API.GetLeadersSchedule()
-        if err == nil {
+        if err == nil && schedule != nil {
             (*scheduleMap)[epoch.String()] = api.SortLeaderLogsByScheduleTime(schedule)
-        } else {
-            (*scheduleMap)[epoch.String()] = []api.LeaderAssignment{}
         }
     }
     return (*scheduleMap)[epoch.String()]
 }
 
+// the current strategy to handle epoch turn overs is to stick to the
+// current leader for a while, and then bootstrap one after another of
+// the other passive nodes.
+func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
+    for name, node := range nodes {
+        if leaderName == nil || name != *leaderName {
+            log.Debugf("Node %v is shutdown gracefully.", leaderName)
+            shutDownNode(node)
+            time.Sleep(1 * time.Minute)
+        }
+    }
+}
+
 // starts the leader jury and let it continuously run. it reads all the checkpoints
 // that have been passed from the monitor to this leader jury.
 func (jury *LeaderJury) Judge() {
+    nodeNames := getNodeNames(jury.nodes)
+    mem := createBlockHeightMemory(nodeNames, jury.config.Window)
+    // get current leader
     leader := jury.scanForLeader()
     if leader != nil {
         log.Infof("[LEADER JURY] Node %v is elected and has ID=%v", leader.name, leader.leaderID)
         jury.leader = leader
     }
-    nodeNames := getNodeNames(jury.nodes)
-    mem := createBlockHeightMemory(nodeNames, jury.config.Window)
     scheduleMap := make(map[string][]api.LeaderAssignment)
+    turnOverBootStrap := make(map[string]bool)
     for ; ; {
         latestBlockStats := <-jury.BlockStatsChannel
-        // check leader schedule
+        // check the leader schedule
         var schedule []api.LeaderAssignment
-        for key, value := range latestBlockStats {
-            schedule = getSchedule(jury.nodes[key], value.LastBlockDate.GetEpoch(), &scheduleMap)
-            break
+        if leader != nil {
+            value, found := latestBlockStats[leader.name]
+            if found {
+                schedule = getSchedule(jury.nodes[leader.name], value.LastBlockDate.GetEpoch(), &scheduleMap)
+            }
         }
-        //
+        if schedule == nil {
+            for key, value := range latestBlockStats {
+                schedule = getSchedule(jury.nodes[key], value.LastBlockDate.GetEpoch(), &scheduleMap)
+                if schedule != nil {
+                    break
+                }
+            }
+            if schedule == nil {
+                schedule = []api.LeaderAssignment{}
+            }
+        }
+        log.Debugf("Number of leader assignments: %v", len(schedule))
+        // bootstrap non leader nodes after epoch turn over gracefully.
+        currentSlotDate, _ := jury.config.TimeSettings.GetSlotDateFor(time.Now())
+        if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
+            bootstrapped, found := turnOverBootStrap[currentSlotDate.GetEpoch().String()]
+            if !found || !bootstrapped {
+                log.Debugf("Entry into exclusion zone, non leader nodes are shutdown.")
+                if jury.leader != nil {
+                    go shutdownTrustedNodesGracefully(&jury.leader.name, jury.nodes)
+                } else {
+                    go shutdownTrustedNodesGracefully(nil, jury.nodes)
+                }
+                turnOverBootStrap[currentSlotDate.GetEpoch().String()] = true
+            }
+
+        }
+        // check health
         mem.addBlockHeights(latestBlockStats)
         maxConf, maxConfNodes := minFloat(computeHealth(mem.getDiff()))
         log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
@@ -113,8 +164,11 @@ func (jury *LeaderJury) Judge() {
                         }
                     }
                 }
-                // no leader change after epoch turn over.
-                // TODO: safety check for epoch turn over.
+                // no leader change after in exclusion zone after epoch turn over.
+                if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
+                    log.Warnf("In exclusion zone, no leader change will be performed.")
+                    continue
+                }
                 // change leader. //TODO: make it random, do not sort!
                 jury.changeLeader(maxConfNodes[0])
             }

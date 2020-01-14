@@ -46,6 +46,12 @@ func minFloat(floatMap map[string]*big.Float) (*big.Float, []string) {
     return minV, peers
 }
 
+func shutDownNode(node Node) {
+    _ = node.API.Shutdown()
+    time.Sleep(time.Duration(200) * time.Millisecond)
+    _ = node.API.Shutdown()
+}
+
 // transforms the given up time into a human readable string.
 func getHumanReadableUpTime(upTime time.Duration) string {
     fmt := durafmt.Parse(upTime)

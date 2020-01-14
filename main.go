@@ -76,7 +76,7 @@ func main() {
                             go poolTool.Start()
                         }
                         // Leader Jury
-                        leaderJury, err := config.GetLeaderJury(nodes, conf)
+                        leaderJury, err := config.GetLeaderJury(nodes, blockChainSettings, conf)
                         if err == nil {
                             if leaderJury != nil {
                                 go leaderJury.Judge()

@@ -42,12 +42,6 @@ func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionCon
     }
 }
 
-func shutDownNode(node Node) {
-    _ = node.API.Shutdown()
-    time.Sleep(time.Duration(200) * time.Millisecond)
-    _ = node.API.Shutdown()
-}
-
 type EmailActionConfig struct {
     SourceAddress        string
     DestinationAddresses []string
