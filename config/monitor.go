@@ -6,7 +6,8 @@ import "github.com/sobitada/thor/monitor"
 type Monitor struct {
     // interval in which the status of nodes shall be checked.
     // it must be specified in milliseconds.
-    IntervalInMs uint32 `yaml:"interval"`
+    IntervalInMs uint32        `yaml:"interval"`
+    LeaderConfig *LeaderConfig `yaml:"leader_jury"`
 }
 
 // gets the behaviour of the monitor specified in the given configuration.

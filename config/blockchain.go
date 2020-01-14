@@ -13,6 +13,7 @@ type BlockchainSettings struct {
     SlotDurationInMs     uint64    `yaml:"slotDuration"`
 }
 
+// gets the time settings for the given blockchain configuration.
 func GetTimeSettings(conf BlockchainSettings) (*cardano.TimeSettings, error) {
     if conf.SlotsPerEpoch > 0 && conf.SlotDurationInMs > 0 {
         return &cardano.TimeSettings{

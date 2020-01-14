@@ -48,10 +48,11 @@ type nodeMonitorImpl struct {
     Actions      []Action
     TimeSettings *cardano.TimeSettings
     PoolTool     *pooltool.PoolTool
+    LeaderJury   *LeaderJury
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings, poolTool *pooltool.PoolTool) NodeMonitor {
-    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions, TimeSettings: settings, PoolTool: poolTool}
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings, poolTool *pooltool.PoolTool, jury *LeaderJury) NodeMonitor {
+    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions, TimeSettings: settings, PoolTool: poolTool, LeaderJury: jury}
 }
 
 func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
@@ -87,6 +88,10 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
             } else {
                 log.Errorf("[%s] Node details cannot be fetched.", node.Name)
             }
+        }
+        // send block infos to leader jury
+        if nodeMonitor.LeaderJury != nil {
+            nodeMonitor.LeaderJury.BlockStatsChannel <- lastBlockMap
         }
         maxHeight, nodes := max(blockHeightMap)
         // update pool tool if configured

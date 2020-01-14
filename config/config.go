@@ -4,13 +4,13 @@ import "fmt"
 
 // general config for this application.
 type General struct {
-    Logging    Logging     `yaml:"logging"`
-    Peers      []Node      `yaml:"peers"`
-    Monitor    Monitor     `yaml:"monitor"`
-    PoolTool   *PoolTool   `yaml:"pooltool"`
-    Email      *Email              `yaml:"email"`
-    Blockchain *BlockchainSettings `yaml:"blockchain"`
-    Prometheus *Prometheus `yaml:"prometheus"`
+    Logging      Logging             `yaml:"logging"`
+    Peers        []Node              `yaml:"peers"`
+    Monitor      Monitor             `yaml:"monitor"`
+    PoolTool     *PoolTool           `yaml:"pooltool"`
+    Email        *Email              `yaml:"email"`
+    Blockchain   *BlockchainSettings `yaml:"blockchain"`
+    Prometheus   *Prometheus         `yaml:"prometheus"`
 }
 
 type ConfigurationError struct {

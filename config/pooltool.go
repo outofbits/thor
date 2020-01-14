@@ -13,6 +13,7 @@ type PoolTool struct {
     PoolID string `yaml:"poolID"`
 }
 
+// gets the pool tool client for given configuration
 func ParsePoolToolConfig(conf General) (*pooltool.PoolTool, error) {
     if conf.PoolTool != nil {
         poolToolConf := *conf.PoolTool

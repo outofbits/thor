@@ -75,9 +75,18 @@ func main() {
                         if poolTool != nil {
                             go poolTool.Start()
                         }
+                        // Leader Jury
+                        leaderJury, err := config.GetLeaderJury(nodes, conf)
+                        if err == nil {
+                            if leaderJury != nil {
+                                go leaderJury.Judge()
+                            }
+                        } else {
+                            log.Warnf("Leader jury was not configured correctly. %v", err.Error())
+                        }
                         // Monitor
                         m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf), parseActions(conf),
-                            blockChainSettings, poolTool)
+                            blockChainSettings, poolTool, leaderJury)
                         m.Watch()
                     } else {
                         fmt.Printf("No passive/leader nodes specified. Nothing to do.")
