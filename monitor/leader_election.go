@@ -149,20 +149,22 @@ func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment)
         log.Debugf("[LEADER JURY] Started sanity check for %v assignments ahead. ", len(nextAssignments))
         for i := 0; i < len(nextAssignments); i++ {
             waitDuration := nextAssignments[i].ScheduleTime.Sub(time.Now()) - 1*time.Minute
-            log.Infof("[LEADER JURY] Waiting %v for the next sanity check.", waitDuration.String())
-            time.Sleep(waitDuration)
-            log.Infof("[LEADER JURY] Sanity check before assignments %v.", nextAssignments[i].ScheduleTime)
-            // do sanity checking
-            jury.leaderRWMutex.Lock()
-            for name, node := range jury.nodes {
-                log.Infof("[LEADER JURY] Sanity check node %v.", name)
-                if jury.leader != nil && jury.leader.name == name {
-                    jury.sanityCheckLeaderNode(node)
-                } else {
-                    jury.sanityCheckPassiveNode(node)
+            if waitDuration > 0 { // no sanity check between slots that are too close to each other.
+                log.Infof("[LEADER JURY] Waiting %v for the next sanity check.", waitDuration.String())
+                time.Sleep(waitDuration)
+                log.Infof("[LEADER JURY] Sanity check before assignments %v.", nextAssignments[i].ScheduleTime)
+                // do sanity checking
+                jury.leaderRWMutex.Lock()
+                for name, node := range jury.nodes {
+                    log.Infof("[LEADER JURY] Sanity check node %v.", name)
+                    if jury.leader != nil && jury.leader.name == name {
+                        jury.sanityCheckLeaderNode(node)
+                    } else {
+                        jury.sanityCheckPassiveNode(node)
+                    }
                 }
+                jury.leaderRWMutex.Unlock()
             }
-            jury.leaderRWMutex.Unlock()
         }
         time.Sleep(1 * time.Minute)
     }
