@@ -53,8 +53,8 @@ type ReportBlockLagPerEmailAction struct {
     Config EmailActionConfig
 }
 
-const latestBlockMessage string = `
-Latest Block
+const latestNodeStatsMessage string = `
+Latest Node Statistics
 ------------
 UpTime: %v
 Received Blocks: %v
@@ -65,7 +65,7 @@ Hash: %v
 `
 
 func getLatestBlockMessage(nodeStatistic jor.NodeStatistic) string {
-    return fmt.Sprintf(latestBlockMessage, nodeStatistic.UpTime.String(), nodeStatistic.ReceivedBlocks.String(),
+    return fmt.Sprintf(latestNodeStatsMessage, nodeStatistic.UpTime.String(), nodeStatistic.ReceivedBlocks.String(),
         nodeStatistic.ReceivedTransactions.String(), nodeStatistic.LastBlockDate.String(),
         nodeStatistic.LastBlockHeight, nodeStatistic.LastBlockHash)
 }
@@ -122,7 +122,7 @@ type ReportStuckPerEmailAction struct {
 }
 
 const stuckMessage string = `
-Node '%v' most recent block was computed at %v.
+Node '%v' most recent block was computed at %v, %v ago.
 
 Timestamp: %v
 
@@ -143,7 +143,7 @@ func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionCont
                 if diff > peer.MaxTimeSinceLastBlock {
                     sendEmailReport(action.Config, fmt.Sprintf("[THOR][%v] Report Blockchain Stuck.", peer.Name),
                         fmt.Sprintf(stuckMessage, peer.Name, mostRecentBlockDate.GetStartDateTime().String(),
-                            time.Now().String(), getLatestBlockMessage(context.LastNodeStatisticMap[peer.Name])))
+                            diff.String(), time.Now().String(), getLatestBlockMessage(context.LastNodeStatisticMap[peer.Name])))
                 }
             }
         }
