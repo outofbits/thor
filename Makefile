@@ -1,4 +1,4 @@
-VERSION=`grep -oP 'const ApplicationVersion string = "\K[\d.-a-zA-Z]+' main.go`
+VERSION=`grep -oP 'const ApplicationVersion string = "\K[-\d.a-zA-Z]+' main.go`
 
 build-cross-platform: clean-build-dir build-linux-amd64 build-linux-arm build-linux-arm64
 
