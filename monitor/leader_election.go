@@ -14,7 +14,7 @@ import (
 
 type LeaderJury struct {
     leader            *currentLeader
-    leaderRWMutex     *sync.Mutex
+    leaderMutex       *sync.Mutex
     nodes             map[string]Node
     BlockStatsChannel chan map[string]api.NodeStatistic
     Cert              api.LeaderCertificate
@@ -59,7 +59,7 @@ func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, config Le
         BlockStatsChannel: c,
         Cert:              certificate,
         config:            config,
-        leaderRWMutex:     &leaderRWMutex,
+        leaderMutex:       &leaderRWMutex,
     }
 }
 
@@ -152,9 +152,9 @@ func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment)
             if waitDuration > 0 { // no sanity check between slots that are too close to each other.
                 log.Infof("[LEADER JURY] Waiting %v for the next sanity check.", waitDuration.String())
                 time.Sleep(waitDuration)
-                log.Infof("[LEADER JURY] Sanity check before assignments %v.", nextAssignments[i].ScheduleTime)
+                log.Infof("[LEADER JURY] Sanity check before assignment %v.", nextAssignments[i].ScheduleTime)
                 // do sanity checking
-                jury.leaderRWMutex.Lock()
+                jury.leaderMutex.Lock()
                 for name, node := range jury.nodes {
                     log.Infof("[LEADER JURY] Sanity check node %v.", name)
                     if jury.leader != nil && jury.leader.name == name {
@@ -163,7 +163,7 @@ func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment)
                         jury.sanityCheckPassiveNode(node)
                     }
                 }
-                jury.leaderRWMutex.Unlock()
+                jury.leaderMutex.Unlock()
             }
         }
         time.Sleep(1 * time.Minute)
@@ -171,10 +171,10 @@ func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment)
 }
 
 // gets the current schedule.
-func getSchedule(node Node) []api.LeaderAssignment {
+func getCurrentSchedule(epoch *big.Int, node Node) []api.LeaderAssignment {
     schedule, err := node.API.GetLeadersSchedule()
     if err == nil && schedule != nil {
-        return api.SortLeaderLogsByScheduleTime(schedule)
+        return api.FilterForLeaderLogsInEpoch(epoch, api.SortLeaderLogsByScheduleTime(schedule))
     }
     return schedule
 }
@@ -218,16 +218,21 @@ func (jury *LeaderJury) Judge() {
         if !found || len(schedule) == 0 {
             lastTimeChecked, found := lastScheduleCheckMap[currentSlotDate.GetEpoch().String()]
             if !found || (lastTimeChecked.Before(time.Now().Add(-10 * time.Minute))) {
+                // wait two minutes after epoch turn over.
+                if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
+                    time.Sleep(2 * time.Minute)
+                }
+                // fetch the assignment schedule
                 var newSchedule []api.LeaderAssignment
                 if jury.leader != nil {
-                    newSchedule = getSchedule(jury.nodes[jury.leader.name])
+                    newSchedule = getCurrentSchedule(currentSlotDate.GetEpoch(), jury.nodes[jury.leader.name])
                 }
-                if newSchedule == nil {
+                if newSchedule == nil || len(newSchedule) > 0 {
                     for n := range jury.nodes {
                         if jury.leader != nil && jury.leader.name == jury.nodes[n].Name {
                             continue
                         }
-                        newSchedule = getSchedule(jury.nodes[n])
+                        newSchedule = getCurrentSchedule(currentSlotDate.GetEpoch(), jury.nodes[n])
                         if newSchedule != nil && len(newSchedule) > 0 {
                             break
                         }
@@ -235,9 +240,9 @@ func (jury *LeaderJury) Judge() {
                 }
                 if newSchedule != nil && len(newSchedule) > 0 {
                     scheduleChannel <- newSchedule
+                    schedule = newSchedule
+                    scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
                 }
-                schedule = newSchedule
-                scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
                 lastScheduleCheckMap[currentSlotDate.GetEpoch().String()] = time.Now()
             }
         }
@@ -300,8 +305,8 @@ func randomSort(nodes []string) []string {
 
 // changes the leader to the given name.
 func (jury *LeaderJury) changeLeader(leaderName string) {
-    jury.leaderRWMutex.Lock()
-    defer jury.leaderRWMutex.Unlock()
+    jury.leaderMutex.Lock()
+    defer jury.leaderMutex.Unlock()
 
     newLeaderNode := jury.nodes[leaderName]
     leaderID, err := newLeaderNode.API.PostLeader(jury.Cert)
