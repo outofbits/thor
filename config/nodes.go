@@ -25,7 +25,7 @@ func GetNodesFromConfig(config General) []monitor.Node {
     nodeList := make([]monitor.Node, 0)
     for i := range config.Peers {
         peerConfig := config.Peers[i]
-        api, err := jor.GetAPIFromHost(peerConfig.APIUrl)
+        api, err := jor.GetAPIFromHost(peerConfig.APIUrl, 1*time.Second)
         if err == nil {
             var maxTimeSinceLastBlock time.Duration
             // maximum block lag.

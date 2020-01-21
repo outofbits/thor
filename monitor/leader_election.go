@@ -138,6 +138,7 @@ func (jury *LeaderJury) sanityCheckLeaderNode(node Node) {
 func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment) {
     for ; ; {
         assignments := <-scheduleChannel
+        log.Debugf("[LEADER JURY] Received schedule of length %v for sanity check.", len(assignments))
         currentSlotDate, err := jury.config.TimeSettings.GetSlotDateFor(time.Now())
         if err != nil {
             log.Fatalf("[LEADER JURY] Sanity check loop panicked: %v", err.Error())
@@ -220,7 +221,7 @@ func (jury *LeaderJury) Judge() {
             if !found || (lastTimeChecked.Before(time.Now().Add(-10 * time.Minute))) {
                 // wait two minutes after epoch turn over.
                 if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
-                    time.Sleep(2 * time.Minute)
+                    time.Sleep(4 * jury.config.TimeSettings.SlotDuration)
                 }
                 // fetch the assignment schedule
                 var newSchedule []api.LeaderAssignment
@@ -240,9 +241,9 @@ func (jury *LeaderJury) Judge() {
                 }
                 if newSchedule != nil && len(newSchedule) > 0 {
                     scheduleChannel <- newSchedule
-                    schedule = newSchedule
-                    scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
                 }
+                schedule = newSchedule
+                scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
                 lastScheduleCheckMap[currentSlotDate.GetEpoch().String()] = time.Now()
             }
         }
@@ -271,11 +272,11 @@ func (jury *LeaderJury) Judge() {
             if len(maxConfNodes) > 0 {
                 // no leader change if in exclusion zone.
                 if len(schedule) > 0 {
-                    futureSchedule := api.FilterLeaderLogsBefore(time.Now(), schedule)
+                    futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.config.TimeSettings.SlotDuration), schedule)
                     if len(futureSchedule) > 0 {
                         timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
-                        if timeToNextBlock < jury.config.ExclusionZone {
-                            log.Warnf("[LEADER JURY] In exclusion zone before scheduled block.")
+                        if timeToNextBlock <= 0 || timeToNextBlock < jury.config.ExclusionZone {
+                            log.Warnf("[LEADER JURY] In exclusion zone shortly before/after scheduled block.")
                             continue
                         }
                     }
