@@ -186,7 +186,7 @@ func getCurrentSchedule(epoch *big.Int, node Node) []api.LeaderAssignment {
 func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
     for name, node := range nodes {
         if leaderName == nil || name != *leaderName {
-            log.Debugf("Node %v is going to be shutdown gracefully.", leaderName)
+            log.Debugf("Node %v is going to be shutdown gracefully.", name)
             shutDownNode(node)
             time.Sleep(1 * time.Minute)
         }
