@@ -32,6 +32,10 @@ func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionCon
         if peer.MaxBlockLag == 0 { // ignore nodes that have not set a MaxInt block lag.
             continue
         }
+        nodeStats, found := context.LastNodeStatisticMap[peer.Name]
+        if !found || nodeStats.UpTime <= peer.WarmUpTime { // give the node some time to warm up
+            continue
+        }
         peerBlockHeight, found := context.BlockHeightMap[peer.Name]
         if found {
             lag := new(big.Int).Sub(context.MaximumBlockHeight, peerBlockHeight)
@@ -86,6 +90,10 @@ func (action ReportBlockLagPerEmailAction) execute(nodes []Node, context ActionC
         if peer.MaxBlockLag == 0 { // ignore nodes that have not set a MaxInt block lag.
             continue
         }
+        nodeStats, found := context.LastNodeStatisticMap[peer.Name]
+        if !found || nodeStats.UpTime <= peer.WarmUpTime { // give the node some time to warm up
+            continue
+        }
         if found {
             lag := new(big.Int).Sub(context.MaximumBlockHeight, peerBlockHeight)
             if lag.Cmp(new(big.Int).SetUint64(peer.MaxBlockLag)) >= 0 {
@@ -104,6 +112,10 @@ func (action ShutDownWhenStuck) execute(nodes []Node, context ActionContext) {
             peer := nodes[p]
             lastBlock, found := context.LastNodeStatisticMap[peer.Name]
             if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a MaxInt duration.
+                continue
+            }
+            nodeStats, found := context.LastNodeStatisticMap[peer.Name]
+            if !found || nodeStats.UpTime <= peer.WarmUpTime { // give the node some time to warm up
                 continue
             }
             if found {
@@ -136,6 +148,10 @@ func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionCont
             peer := nodes[p]
             lastBlock, found := context.LastNodeStatisticMap[peer.Name]
             if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a MaxInt duration.
+                continue
+            }
+            nodeStats, found := context.LastNodeStatisticMap[peer.Name]
+            if !found || nodeStats.UpTime <= peer.WarmUpTime { // give the node some time to warm up
                 continue
             }
             if found {
