@@ -3,6 +3,7 @@ package main
 import (
     "flag"
     "fmt"
+    graylog "github.com/gemnasium/logrus-graylog-hook"
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     "github.com/sobitada/thor/config"
@@ -13,7 +14,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0-alpha4"
+const ApplicationVersion string = "0.2.0-alpha6"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -38,6 +39,18 @@ func setLoggingConfiguration(config config.General) {
     log.SetFormatter(&log.TextFormatter{
         FullTimestamp: true,
     })
+    /* add graylog hook for given configuration */
+    if config.Logging.GrayLog != nil {
+        if config.Logging.GrayLog.Host != "" && config.Logging.GrayLog.Port != "" {
+            hook := graylog.NewGraylogHook(fmt.Sprintf("%v:%v", config.Logging.GrayLog.Host, config.Logging.GrayLog.Port), map[string]interface{}{
+                "app":     ApplicationName,
+                "version": ApplicationVersion,
+            })
+            log.AddHook(hook)
+        } else {
+            log.Warn("Host and port must be specified for Graylog. Logging hook was not added.")
+        }
+    }
 }
 
 func main() {
