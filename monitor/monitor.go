@@ -28,6 +28,8 @@ type Node struct {
     MaxBlockLag uint64
     // maximum time since the last block has been received.
     MaxTimeSinceLastBlock time.Duration
+    // warm up time in which no shutdown shall be executed.
+    WarmUpTime time.Duration
 }
 
 type NodeMonitor interface {

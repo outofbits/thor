@@ -18,6 +18,8 @@ type Node struct {
     MaxBlockLag uint64 `yaml:"maxBlockLag"`
     // maximum time in ms since the last block has been received.
     MaxTimeSinceLastBlockInMs int64 `yaml:"maxTimeSinceLastBlock"`
+    // warm up time in which no shutdown shall be executed.
+    WarmUpTime int64 `yaml:"warmUpTime"`
 }
 
 // extracts the node details from the configuration file.
@@ -44,6 +46,7 @@ func GetNodesFromConfig(config General) []monitor.Node {
                 API:                   api,
                 MaxBlockLag:           peerConfig.MaxBlockLag,
                 MaxTimeSinceLastBlock: maxTimeSinceLastBlock,
+                WarmUpTime:            time.Duration(peerConfig.WarmUpTime) * time.Millisecond,
             })
         } else {
             log.Warn("[%s] Could not build an API for this peer from the specified configuration. %s", err.Error())
