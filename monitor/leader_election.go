@@ -1,10 +1,10 @@
 package monitor
 
 import (
-    "fmt"
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/utils"
     "math/big"
     "math/rand"
     "strings"
@@ -12,13 +12,13 @@ import (
     "time"
 )
 
-type LeaderJury struct {
+type Jury struct {
     leader            *currentLeader
     leaderMutex       *sync.Mutex
     nodes             map[string]Node
     BlockStatsChannel chan map[string]api.NodeStatistic
     Cert              api.LeaderCertificate
-    config            LeaderJuryConfig
+    settings          JurySettings
 }
 
 type currentLeader struct {
@@ -26,8 +26,8 @@ type currentLeader struct {
     leaderID uint64
 }
 
-// configuration details for the Leader Jury.
-type LeaderJuryConfig struct {
+// settings for the Leader Jury.
+type JurySettings struct {
     // the number of checkpoints that shall be
     // considered for the health check and leader
     // decisions.
@@ -38,27 +38,27 @@ type LeaderJuryConfig struct {
     // specifies the number of slots after an epoch
     // turn over in which no leader change is allowed.
     EpochTurnOverExclusionSlots *big.Int
-    // time settings for the blockchain such as
+    // time settings for the block chain such as
     // creation time of the genesis block, slots
     // per epoch and slot duration.
     TimeSettings *cardano.TimeSettings
 }
 
 // gets the leader jury judging the given nodes. it expects the certificate of the
-// leader that shall be managed and configuration details. moreover, the time
-// settings for the blockhain is needed to handle epoch turn overs.
-func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, config LeaderJuryConfig) *LeaderJury {
+// leader that shall be managed and jury settings. moreover, the time
+// settings for the block chain is needed to handle epoch turn overs.
+func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, settings JurySettings) *Jury {
     c := make(chan map[string]api.NodeStatistic)
     nodeMap := make(map[string]Node)
     for i := range nodes {
         nodeMap[nodes[i].Name] = nodes[i]
     }
     var leaderRWMutex sync.Mutex
-    return &LeaderJury{
+    return &Jury{
         nodes:             nodeMap,
         BlockStatsChannel: c,
         Cert:              certificate,
-        config:            config,
+        settings:          settings,
         leaderMutex:       &leaderRWMutex,
     }
 }
@@ -69,7 +69,7 @@ func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, config Le
 // tries to correct potential problems with the current
 // nodes. There must not be multiple nodes promoted to
 // leader.
-func (jury *LeaderJury) scanForLeader() *currentLeader {
+func (jury *Jury) scanForLeader() *currentLeader {
     var leader *currentLeader = nil
     for name, node := range jury.nodes {
         leaderIDs, err := node.API.GetRegisteredLeaders()
@@ -92,85 +92,6 @@ func (jury *LeaderJury) scanForLeader() *currentLeader {
     return leader
 }
 
-func (jury *LeaderJury) sanityCheckPassiveNode(node Node) {
-    leaderIDs, err := node.API.GetRegisteredLeaders()
-    if err == nil {
-        if len(leaderIDs) > 0 {
-            log.Warnf("[LEADER JURY] Node %v is in leader mode while jury promoted other node.", node.Name)
-            for i := range leaderIDs {
-                demoteLeader(node, leaderIDs[i], 3)
-            }
-        }
-    }
-}
-
-func (jury *LeaderJury) sanityCheckLeaderNode(node Node) {
-    leaderIDs, err := node.API.GetRegisteredLeaders()
-    if err == nil {
-        leaderIDNumber := len(leaderIDs)
-        if leaderIDNumber == 0 {
-            log.Warnf("[LEADER JURY] Node %v is not promoted to leader node as expected.", node.Name)
-            leaderID, err := node.API.PostLeader(jury.Cert)
-            if err == nil {
-                jury.leader = &currentLeader{name: node.Name, leaderID: leaderID}
-                log.Infof("[LEADER JURY] Node %v is elected and has ID=%v", node.Name, leaderID)
-            } else {
-                log.Errorf("[LEADER JURY] Could not change to leader %v. %v", node.Name, err.Error())
-            }
-        } else if leaderIDNumber == 1 {
-            log.Infof("[LEADER JURY] Node %v is leader as expected.", node.Name)
-        } else {
-            log.Warnf("[LEADER JURY] Node %v has more than one leader registered (%v).", node.Name, leaderIDNumber)
-            for i := range leaderIDs {
-                if leaderIDs[i] != jury.leader.leaderID {
-                    demoteLeader(node, leaderIDs[i], 3)
-                }
-            }
-        }
-    }
-}
-
-// sanity check tries to correct fail overs and potential flaws in this
-// program as well as in Jormungandr. It checks whether only one node is
-// promoted to a leader. It is important to avoid adversarial forks,
-// because creating such a fork causes public shame! shame! shaming and
-// blacklisting.
-func (jury *LeaderJury) sanityCheck(scheduleChannel chan []api.LeaderAssignment) {
-    for ; ; {
-        assignments := <-scheduleChannel
-        log.Debugf("[LEADER JURY] Received schedule of length %v for sanity check.", len(assignments))
-        currentSlotDate, err := jury.config.TimeSettings.GetSlotDateFor(time.Now())
-        if err != nil {
-            log.Fatalf("[LEADER JURY] Sanity check loop panicked: %v", err.Error())
-            time.Sleep(30 * time.Minute)
-            continue
-        }
-        nextAssignments := api.FilterLeaderLogsBefore(time.Now().Add(2*time.Minute),
-            api.SortLeaderLogsByScheduleTime(api.FilterForLeaderLogsInEpoch(currentSlotDate.GetEpoch(), assignments)))
-        log.Debugf("[LEADER JURY] Started sanity check for %v assignments ahead. ", len(nextAssignments))
-        for i := 0; i < len(nextAssignments); i++ {
-            waitDuration := nextAssignments[i].ScheduleTime.Sub(time.Now()) - 1*time.Minute
-            if waitDuration > 0 { // no sanity check between slots that are too close to each other.
-                log.Infof("[LEADER JURY] Waiting %v for the next sanity check.", waitDuration.String())
-                time.Sleep(waitDuration)
-                log.Infof("[LEADER JURY] Sanity check before assignment %v.", nextAssignments[i].ScheduleTime)
-                // do sanity checking
-                jury.leaderMutex.Lock()
-                for name, node := range jury.nodes {
-                    log.Infof("[LEADER JURY] Sanity check node %v.", name)
-                    if jury.leader != nil && jury.leader.name == name {
-                        jury.sanityCheckLeaderNode(node)
-                    } else {
-                        jury.sanityCheckPassiveNode(node)
-                    }
-                }
-                jury.leaderMutex.Unlock()
-            }
-        }
-        time.Sleep(1 * time.Minute)
-    }
-}
-
 // gets the current schedule.
 func getCurrentSchedule(epoch *big.Int, node Node) []api.LeaderAssignment {
     schedule, err := node.API.GetLeadersSchedule()
@@ -187,7 +108,7 @@ func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
     for name, node := range nodes {
         if leaderName == nil || name != *leaderName {
             log.Debugf("Node %v is going to be shutdown gracefully.", name)
-            shutDownNode(node)
+            ShutDownNode(node)
             time.Sleep(1 * time.Minute)
         }
     }
@@ -195,9 +116,9 @@ func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
 
 // starts the leader jury and let it continuously run. it reads all the checkpoints
 // that have been passed from the monitor to this leader jury.
-func (jury *LeaderJury) Judge() {
-    nodeNames := getNodeNames(jury.nodes)
-    mem := createBlockHeightMemory(nodeNames, jury.config.Window)
+func (jury *Jury) Judge() {
+    nodeNames := GetNodeNames(jury.nodes)
+    mem := createBlockHeightMemory(nodeNames, jury.settings.Window)
     // get current leader
     leader := jury.scanForLeader()
     if leader != nil {
@@ -214,14 +135,14 @@ func (jury *LeaderJury) Judge() {
     for ; ; {
         latestBlockStats := <-jury.BlockStatsChannel
         // check the leader schedule
-        currentSlotDate, _ := jury.config.TimeSettings.GetSlotDateFor(time.Now())
+        currentSlotDate, _ := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
         schedule, found := scheduleMap[currentSlotDate.GetEpoch().String()]
         if !found || len(schedule) == 0 {
             lastTimeChecked, found := lastScheduleCheckMap[currentSlotDate.GetEpoch().String()]
             if !found || (lastTimeChecked.Before(time.Now().Add(-10 * time.Minute))) {
                 // wait two minutes after epoch turn over.
-                if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
-                    time.Sleep(4 * jury.config.TimeSettings.SlotDuration)
+                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
+                    time.Sleep(2 * time.Minute)
                 }
                 // fetch the assignment schedule
                 var newSchedule []api.LeaderAssignment
@@ -252,7 +173,7 @@ func (jury *LeaderJury) Judge() {
         }
         log.Debugf("Number of leader assignments: %v", len(schedule))
         // bootstrap non leader nodes after epoch turn over gracefully. //TODO: make stateless
-        if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
+        if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
             bootstrapped, found := turnOverBootStrap[currentSlotDate.GetEpoch().String()]
             if !found || !bootstrapped {
                 log.Debugf("[LEADER JURY] Entry into exclusion zone, none leader nodes are shutdown.")
@@ -266,23 +187,23 @@ func (jury *LeaderJury) Judge() {
         }
         // check health
         mem.addBlockHeights(latestBlockStats)
-        maxConf, maxConfNodes := minFloat(computeHealth(mem.getDiff()))
+        maxConf, maxConfNodes := utils.MinFloat(mem.computeHealth())
         log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
         if jury.leader == nil || !containsLeader(maxConfNodes, jury.leader.name) {
             if len(maxConfNodes) > 0 {
                 // no leader change if in exclusion zone.
                 if len(schedule) > 0 {
-                    futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.config.TimeSettings.SlotDuration), schedule)
+                    futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.settings.TimeSettings.SlotDuration), schedule)
                     if len(futureSchedule) > 0 {
                         timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
-                        if timeToNextBlock <= 0 || timeToNextBlock < jury.config.ExclusionZone {
-                            log.Warnf("[LEADER JURY] In exclusion zone shortly before/after scheduled block.")
+                        if timeToNextBlock < jury.settings.ExclusionZone {
+                            log.Warnf("[LEADER JURY] In exclusion zone before scheduled block.")
                             continue
                         }
                     }
                 }
                 // no leader change after in exclusion zone after epoch turn over.
-                if currentSlotDate.GetSlot().Cmp(jury.config.EpochTurnOverExclusionSlots) < 0 {
+                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
                     log.Warnf("[LEADER JURY] In exclusion zone, no leader change will be performed.")
                     continue
                 }
@@ -305,7 +226,7 @@ func randomSort(nodes []string) []string {
 }
 
 // changes the leader to the given name.
-func (jury *LeaderJury) changeLeader(leaderName string) {
+func (jury *Jury) changeLeader(leaderName string) {
     jury.leaderMutex.Lock()
     defer jury.leaderMutex.Unlock()
 
@@ -342,7 +263,7 @@ func demoteLeader(node Node, ID uint64, attempts int) {
     }
     if !demoted {
         log.Warnf("[LEADER JURY] Could not demote %v. Now a shutdown will be tried.", node.Name)
-        shutDownNode(node)
+        ShutDownNode(node)
     }
 }
 
@@ -354,92 +275,4 @@ func containsLeader(nodes []string, leader string) bool {
         }
     }
     return false
-}
-
-// gets all the keys of the node map.
-func getNodeNames(nodeMap map[string]Node) []string {
-    var nodeNameList = make([]string, 0)
-    for name, _ := range nodeMap {
-        nodeNameList = append(nodeNameList, name)
-    }
-    return nodeNameList
-}
-
-// computes the health of all the given nodes.
-func computeHealth(diffMap map[string][]*big.Int) map[string]*big.Float {
-    confMap := make(map[string]*big.Float)
-    for name, history := range diffMap {
-        var conf *big.Float = new(big.Float)
-        for i := range history {
-            conf = new(big.Float).Add(conf, new(big.Float).SetInt(history[i]))
-        }
-        confMap[name] = conf
-    }
-    return confMap
-}
-
-// block height memory of all nodes for judging their health.
-type blockHeightMemory struct {
-    n     int
-    mem   map[string][]*big.Int
-    nodes []string
-}
-
-// creates a new block height memory. n specifies the number of checkpoints
-// that shall be remembered. This method expects a list of nodes for which
-// this memory shall be constructed is expected.
-func createBlockHeightMemory(nodes []string, n int) *blockHeightMemory {
-    emptyList := make([]*big.Int, n)
-    for i := 0; i < n; i++ {
-        emptyList[i] = new(big.Int).SetInt64(-1)
-    }
-    mem := make(map[string][]*big.Int)
-    for i := range nodes {
-        mem[nodes[i]] = emptyList
-    }
-    return &blockHeightMemory{n: n, mem: mem, nodes: nodes}
-}
-
-// adds the block heights for all given nodes of a new checkpoint.
-func (m *blockHeightMemory) addBlockHeights(blockMap map[string]api.NodeStatistic) {
-    for i := range m.nodes {
-        name := m.nodes[i]
-        var entry *big.Int
-        stat, found := blockMap[name]
-        if found {
-            entry = stat.LastBlockHeight
-        } else {
-            entry = new(big.Int).SetInt64(-1)
-        }
-        m.mem[name] = append([]*big.Int{entry}, m.mem[name][:m.n]...)
-    }
-}
-
-// computes the difference of the block height to the maximum reported
-// block height for each of the given nodes.
-func (m *blockHeightMemory) getDiff() map[string][]*big.Int {
-    diffMap := make(map[string][]*big.Int)
-    for n := range m.nodes {
-        diffMap[m.nodes[n]] = make([]*big.Int, m.n)
-    }
-    for i := 0; i < m.n; i++ {
-        currentMap := make(map[string]*big.Int)
-        for n := range m.nodes {
-            currentMap[m.nodes[n]] = m.mem[m.nodes[n]][i]
-        }
-        maxHeight, _ := max(currentMap)
-        for name, height := range currentMap {
-            diffMap[name][i] = new(big.Int).Sub(maxHeight, height)
-        }
-    }
-    return diffMap
-}
-
-// string representation of the block height memory.
-func (m *blockHeightMemory) String() string {
-    var result string
-    for name, num := range m.mem {
-        result += fmt.Sprintf("%v=%v;", name, num)
-    }
-    return result + "\n"
 }

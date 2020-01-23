@@ -5,6 +5,7 @@ import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     jor "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/utils"
     "math/big"
     "net/smtp"
     "strings"
@@ -28,7 +29,7 @@ type ShutDownWithBlockLagAction struct{}
 func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionContext) {
     for p := range nodes {
         peer := nodes[p]
-        if peer.MaxBlockLag == 0 { // ignore nodes that have not set a max block lag.
+        if peer.MaxBlockLag == 0 { // ignore nodes that have not set a MaxInt block lag.
             continue
         }
         peerBlockHeight, found := context.BlockHeightMap[peer.Name]
@@ -36,7 +37,7 @@ func (action ShutDownWithBlockLagAction) execute(nodes []Node, context ActionCon
             lag := new(big.Int).Sub(context.MaximumBlockHeight, peerBlockHeight)
             if lag.Cmp(new(big.Int).SetUint64(peer.MaxBlockLag)) >= 0 {
                 log.Warnf("[%s] Pool has fallen behind %v blocks.", peer.Name, lag.String())
-                go shutDownNode(peer)
+                go ShutDownNode(peer)
             }
         }
     }
@@ -82,7 +83,7 @@ func (action ReportBlockLagPerEmailAction) execute(nodes []Node, context ActionC
     for p := range nodes {
         peer := nodes[p]
         peerBlockHeight, found := context.BlockHeightMap[peer.Name]
-        if peer.MaxBlockLag == 0 { // ignore nodes that have not set a max block lag.
+        if peer.MaxBlockLag == 0 { // ignore nodes that have not set a MaxInt block lag.
             continue
         }
         if found {
@@ -102,15 +103,15 @@ func (action ShutDownWhenStuck) execute(nodes []Node, context ActionContext) {
         for p := range nodes {
             peer := nodes[p]
             lastBlock, found := context.LastNodeStatisticMap[peer.Name]
-            if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a max duration.
+            if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a MaxInt duration.
                 continue
             }
             if found {
                 mostRecentBlockDate := cardano.MakeFullSlotDate(lastBlock.LastBlockDate, *context.TimeSettings)
                 diff := time.Now().Sub(mostRecentBlockDate.GetEndDateTime())
                 if diff > peer.MaxTimeSinceLastBlock {
-                    log.Warnf("[%s] Most recent received block is %v old.", peer.Name, getHumanReadableUpTime(diff))
-                    go shutDownNode(peer)
+                    log.Warnf("[%s] Most recent received block is %v old.", peer.Name, utils.GetHumanReadableUpTime(diff))
+                    go ShutDownNode(peer)
                 }
             }
         }
@@ -134,7 +135,7 @@ func (action ReportStuckPerEmailAction) execute(nodes []Node, context ActionCont
         for p := range nodes {
             peer := nodes[p]
             lastBlock, found := context.LastNodeStatisticMap[peer.Name]
-            if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a max duration.
+            if peer.MaxTimeSinceLastBlock <= 0 { // ignore nodes that have not set a MaxInt duration.
                 continue
             }
             if found {

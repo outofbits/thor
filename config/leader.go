@@ -18,7 +18,7 @@ type LeaderConfig struct {
 
 // gets the leader jury for the given configuration. It expects also the nodes
 // for which the leader jury shall be activated.
-func GetLeaderJury(nodes []monitor.Node, timeSettings *cardano.TimeSettings, config General) (*monitor.LeaderJury, error) {
+func GetLeaderJury(nodes []monitor.Node, timeSettings *cardano.TimeSettings, config General) (*monitor.Jury, error) {
     leaderConfig := config.Monitor.LeaderConfig
     if leaderConfig != nil {
         if timeSettings != nil {
@@ -47,7 +47,7 @@ func GetLeaderJury(nodes []monitor.Node, timeSettings *cardano.TimeSettings, con
                         }
                         turnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(turnOverExclusionInS))*time.Second)),
                             new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
-                        return monitor.GetLeaderJuryFor(nodes, leaderCert, monitor.LeaderJuryConfig{
+                        return monitor.GetLeaderJuryFor(nodes, leaderCert, monitor.JurySettings{
                             Window:                      window,
                             ExclusionZone:               exclusionZone,
                             EpochTurnOverExclusionSlots: turnOverExclusionSlots,

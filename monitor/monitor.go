@@ -5,6 +5,7 @@ import (
     "github.com/sobitada/go-cardano"
     jor "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/thor/pooltool"
+    "github.com/sobitada/thor/utils"
     "math/big"
     "time"
 )
@@ -48,12 +49,12 @@ type nodeMonitorImpl struct {
     Nodes        []Node
     Behaviour    NodeMonitorBehaviour
     Actions      []Action
-    TimeSettings *cardano.TimeSettings
     PoolTool     *pooltool.PoolTool
-    LeaderJury   *LeaderJury
+    LeaderJury   *Jury
+    TimeSettings *cardano.TimeSettings
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings, poolTool *pooltool.PoolTool, jury *LeaderJury) NodeMonitor {
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings, poolTool *pooltool.PoolTool, jury *Jury) NodeMonitor {
     return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions, TimeSettings: settings, PoolTool: poolTool, LeaderJury: jury}
 }
 
@@ -78,7 +79,7 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
                         log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight.String(),
                             nodeStats.LastBlockDate.String(),
                             nodeStats.LastBlockHash[:8],
-                            getHumanReadableUpTime(nodeStats.UpTime),
+                            utils.GetHumanReadableUpTime(nodeStats.UpTime),
                         )
                         blockHeightMap[node.Name] = nodeStats.LastBlockHeight
                     } else {
@@ -95,7 +96,7 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
         if nodeMonitor.LeaderJury != nil {
             nodeMonitor.LeaderJury.BlockStatsChannel <- lastBlockMap
         }
-        maxHeight, nodes := max(blockHeightMap)
+        maxHeight, nodes := utils.MaxInt(blockHeightMap)
         // update pool tool if configured
         if nodeMonitor.PoolTool != nil {
             nodeMonitor.PoolTool.PushLatestTip(maxHeight)
