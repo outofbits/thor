@@ -58,7 +58,13 @@ func GetLeaderJuryFor(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *
     // create a node map
     nodeMap := make(map[string]monitor.Node)
     for i := range nodes {
-        nodeMap[nodes[i].Name] = nodes[i]
+        currentNode := nodes[i]
+        if currentNode.Type == monitor.LeaderCandidate {
+            nodeMap[nodes[i].Name] = currentNode
+        }
+    }
+    if len(nodeMap) == 0 {
+        log.Warnf("No node has been specified as leader candidate.")
     }
     // register the node statistics listener
     if mon == nil {

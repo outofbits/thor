@@ -11,11 +11,11 @@ import (
     "time"
 )
 
-type NodeType byte
+type NodeType string
 
 const (
-    Passive NodeType = iota
-    Leader
+    Passive NodeType = "passive"
+    LeaderCandidate = "leader-candidate"
 )
 
 type Node struct {

@@ -10,6 +10,8 @@ import (
 // configuration struct for the nodes that shall
 // be watched.
 type Node struct {
+    // type of the node, "passive" or "leader-candidate"
+    Type monitor.NodeType `yaml:"type"`
     // unique name for a node.
     Name string `yaml:"name"`
     // URL to the API of a node
@@ -41,7 +43,7 @@ func GetNodesFromConfig(config General) []monitor.Node {
                 log.Warnf("Node '%v' has not set any maximum time since new block has been received.", peerConfig.Name)
             }
             nodeList = append(nodeList, monitor.Node{
-                Type:                  monitor.Passive,
+                Type:                  peerConfig.Type,
                 Name:                  peerConfig.Name,
                 API:                   api,
                 MaxBlockLag:           peerConfig.MaxBlockLag,
