@@ -1,9 +1,10 @@
-package monitor
+package leader
 
 import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/monitor"
     "github.com/sobitada/thor/utils"
     "math/big"
     "math/rand"
@@ -13,12 +14,17 @@ import (
 )
 
 type Jury struct {
-    leader            *currentLeader
-    leaderMutex       *sync.Mutex
-    nodes             map[string]Node
-    BlockStatsChannel chan map[string]api.NodeStatistic
-    Cert              api.LeaderCertificate
-    settings          JurySettings
+    nodes            map[string]monitor.Node
+    nodeStatsChannel chan map[string]api.NodeStatistic
+
+    watchDog        *monitor.ScheduleWatchDog
+    scheduleChannel chan []api.LeaderAssignment
+
+    leader      *currentLeader
+    leaderMutex *sync.Mutex
+    cert        api.LeaderCertificate
+
+    settings JurySettings
 }
 
 type currentLeader struct {
@@ -47,20 +53,40 @@ type JurySettings struct {
 // gets the leader jury judging the given nodes. it expects the certificate of the
 // leader that shall be managed and jury settings. moreover, the time
 // settings for the block chain is needed to handle epoch turn overs.
-func GetLeaderJuryFor(nodes []Node, certificate api.LeaderCertificate, settings JurySettings) *Jury {
-    c := make(chan map[string]api.NodeStatistic)
-    nodeMap := make(map[string]Node)
+func GetLeaderJuryFor(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *monitor.ScheduleWatchDog,
+    certificate api.LeaderCertificate, settings JurySettings) (*Jury, error) {
+    // create a node map
+    nodeMap := make(map[string]monitor.Node)
     for i := range nodes {
         nodeMap[nodes[i].Name] = nodes[i]
     }
-    var leaderRWMutex sync.Mutex
-    return &Jury{
-        nodes:             nodeMap,
-        BlockStatsChannel: c,
-        Cert:              certificate,
-        settings:          settings,
-        leaderMutex:       &leaderRWMutex,
+    // register the node statistics listener
+    if mon == nil {
+        return nil, invalidArgument{
+            Method: "GetLeaderJuryFor",
+            Reason: "The passed node monitor must not be nil.",
+        }
     }
+    nodeStatsChannel := make(chan map[string]api.NodeStatistic)
+    mon.ListenerManager.RegisterNodeStatisticListener(nodeStatsChannel)
+    // register schedule listener
+    if watchDog == nil {
+        return nil, invalidArgument{
+            Method: "GetLeaderJuryFor",
+            Reason: "The passed watchdog must not be nil.",
+        }
+    }
+    scheduleChannel := make(chan []api.LeaderAssignment)
+    watchDog.RegisterListener(scheduleChannel)
+    return &Jury{
+        nodes:            nodeMap,
+        nodeStatsChannel: nodeStatsChannel,
+        watchDog:         watchDog,
+        scheduleChannel:  scheduleChannel,
+        cert:             certificate,
+        settings:         settings,
+        leaderMutex:      &sync.Mutex{},
+    }, nil
 }
 
 // scans for the current leader among all the nodes,
@@ -92,23 +118,14 @@ func (jury *Jury) scanForLeader() *currentLeader {
     return leader
 }
 
-// gets the current schedule.
-func getCurrentSchedule(epoch *big.Int, node Node) []api.LeaderAssignment {
-    schedule, err := node.API.GetLeadersSchedule()
-    if err == nil && schedule != nil {
-        return api.FilterForLeaderLogsInEpoch(epoch, api.SortLeaderLogsByScheduleTime(schedule))
-    }
-    return schedule
-}
-
 // the current strategy to handle epoch turn overs is to stick to the
 // current leader for a while, and then bootstrap one after another of
 // the other passive nodes.
-func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
+func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]monitor.Node) {
     for name, node := range nodes {
         if leaderName == nil || name != *leaderName {
             log.Debugf("Node %v is going to be shutdown gracefully.", name)
-            ShutDownNode(node)
+            monitor.ShutDownNode(node)
             time.Sleep(1 * time.Minute)
         }
     }
@@ -117,7 +134,7 @@ func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]Node) {
 // starts the leader jury and let it continuously run. it reads all the checkpoints
 // that have been passed from the monitor to this leader jury.
 func (jury *Jury) Judge() {
-    nodeNames := GetNodeNames(jury.nodes)
+    nodeNames := monitor.GetNodeNames(jury.nodes)
     mem := createBlockHeightMemory(nodeNames, jury.settings.Window)
     // get current leader
     leader := jury.scanForLeader()
@@ -125,50 +142,16 @@ func (jury *Jury) Judge() {
         log.Infof("[LEADER JURY] Node %v is elected and has ID=%v", leader.name, leader.leaderID)
         jury.leader = leader
     }
-    // schedule management preparation
-    var scheduleMap = make(map[string][]api.LeaderAssignment)
-    var lastScheduleCheckMap = make(map[string]time.Time)
-    scheduleChannel := make(chan []api.LeaderAssignment)
-    go jury.sanityCheck(scheduleChannel)
+    // start sanity management
+    go jury.sanityCheck()
     // turn over preparation
     turnOverBootStrap := make(map[string]bool)
     for ; ; {
-        latestBlockStats := <-jury.BlockStatsChannel
+        latestBlockStats := <-jury.nodeStatsChannel
         // check the leader schedule
         currentSlotDate, _ := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
-        schedule, found := scheduleMap[currentSlotDate.GetEpoch().String()]
-        if !found || len(schedule) == 0 {
-            lastTimeChecked, found := lastScheduleCheckMap[currentSlotDate.GetEpoch().String()]
-            if !found || (lastTimeChecked.Before(time.Now().Add(-10 * time.Minute))) {
-                // wait two minutes after epoch turn over.
-                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
-                    time.Sleep(2 * time.Minute)
-                }
-                // fetch the assignment schedule
-                var newSchedule []api.LeaderAssignment
-                if jury.leader != nil {
-                    newSchedule = getCurrentSchedule(currentSlotDate.GetEpoch(), jury.nodes[jury.leader.name])
-                }
-                if newSchedule == nil || len(newSchedule) > 0 {
-                    for n := range jury.nodes {
-                        if jury.leader != nil && jury.leader.name == jury.nodes[n].Name {
-                            continue
-                        }
-                        newSchedule = getCurrentSchedule(currentSlotDate.GetEpoch(), jury.nodes[n])
-                        if newSchedule != nil && len(newSchedule) > 0 {
-                            break
-                        }
-                    }
-                }
-                if newSchedule != nil && len(newSchedule) > 0 {
-                    scheduleChannel <- newSchedule
-                }
-                schedule = newSchedule
-                scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
-                lastScheduleCheckMap[currentSlotDate.GetEpoch().String()] = time.Now()
-            }
-        }
-        if schedule == nil {
+        schedule, found := jury.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
+        if !found || schedule == nil {
             schedule = []api.LeaderAssignment{}
         }
         log.Debugf("Number of leader assignments: %v", len(schedule))
@@ -231,7 +214,7 @@ func (jury *Jury) changeLeader(leaderName string) {
     defer jury.leaderMutex.Unlock()
 
     newLeaderNode := jury.nodes[leaderName]
-    leaderID, err := newLeaderNode.API.PostLeader(jury.Cert)
+    leaderID, err := newLeaderNode.API.PostLeader(jury.cert)
     if err == nil {
         if jury.leader != nil {
             go demoteLeader(jury.nodes[jury.leader.name], jury.leader.leaderID, 3)
@@ -245,7 +228,7 @@ func (jury *Jury) changeLeader(leaderName string) {
 
 // tries at first in n attempts to demote the given leader node. if this fails,
 // then the leader node is shut down as a safety measure.
-func demoteLeader(node Node, ID uint64, attempts int) {
+func demoteLeader(node monitor.Node, ID uint64, attempts int) {
     demoted := false
     for i := 0; i < attempts; i++ {
         found, err := node.API.RemoveRegisteredLeader(ID)
@@ -263,7 +246,7 @@ func demoteLeader(node Node, ID uint64, attempts int) {
     }
     if !demoted {
         log.Warnf("[LEADER JURY] Could not demote %v. Now a shutdown will be tried.", node.Name)
-        ShutDownNode(node)
+        monitor.ShutDownNode(node)
     }
 }
 

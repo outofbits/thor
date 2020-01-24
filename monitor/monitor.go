@@ -7,6 +7,7 @@ import (
     "github.com/sobitada/thor/pooltool"
     "github.com/sobitada/thor/utils"
     "math/big"
+    "sync"
     "time"
 )
 
@@ -33,10 +34,14 @@ type Node struct {
     WarmUpTime time.Duration
 }
 
-type NodeMonitor interface {
-    // a blocking call which is continuously watching
-    // after the Jormungandr nodes.
-    Watch()
+type NodeMonitor struct {
+    nodes           []Node
+    behaviour       NodeMonitorBehaviour
+    actions         []Action
+    ListenerManager *ListenerManager
+    poolTool        *pooltool.PoolTool
+    watchDog        *ScheduleWatchDog
+    timeSettings    *cardano.TimeSettings
 }
 
 type NodeMonitorBehaviour struct {
@@ -45,33 +50,67 @@ type NodeMonitorBehaviour struct {
     IntervalInMs uint32
 }
 
-type nodeMonitorImpl struct {
-    Nodes        []Node
-    Behaviour    NodeMonitorBehaviour
-    Actions      []Action
-    PoolTool     *pooltool.PoolTool
-    LeaderJury   *Jury
-    TimeSettings *cardano.TimeSettings
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, poolTool *pooltool.PoolTool,
+    watchdog *ScheduleWatchDog, settings *cardano.TimeSettings) *NodeMonitor {
+    return &NodeMonitor{
+        nodes:        nodes,
+        behaviour:    behaviour,
+        actions:      actions,
+        timeSettings: settings,
+        watchDog:     watchdog,
+        poolTool:     poolTool,
+        ListenerManager: &ListenerManager{
+            mutex: &sync.Mutex{},
+        },
+    }
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, settings *cardano.TimeSettings, poolTool *pooltool.PoolTool, jury *Jury) NodeMonitor {
-    return nodeMonitorImpl{Nodes: nodes, Behaviour: behaviour, Actions: actions, TimeSettings: settings, PoolTool: poolTool, LeaderJury: jury}
+type ListenerManager struct {
+    nodeStatsListeners []chan map[string]jor.NodeStatistic
+    mutex              *sync.Mutex
 }
 
-func (nodeMonitor nodeMonitorImpl) RegisterAction(action Action) {
-    nodeMonitor.Actions = append(nodeMonitor.Actions, action)
+// register a listener for getting the most recent fetched node statistics for all
+// monitored nodes.
+func (listenerManager *ListenerManager) RegisterNodeStatisticListener(listener chan map[string]jor.NodeStatistic) {
+    listenerManager.mutex.Lock()
+    defer listenerManager.mutex.Unlock()
+    if listenerManager.nodeStatsListeners == nil {
+        listenerManager.nodeStatsListeners = []chan map[string]jor.NodeStatistic{listener}
+    } else {
+        listenerManager.nodeStatsListeners = append(listenerManager.nodeStatsListeners, listener)
+    }
 }
 
-func (nodeMonitor nodeMonitorImpl) Watch() {
+// a blocking call which is continuously watching
+// after the Jormungandr nodes.
+func (nodeMonitor *NodeMonitor) Watch() {
     log.Infof("Starting to watch nodes.")
     for ; ; {
         blockHeightMap := make(map[string]*big.Int)
         lastBlockMap := make(map[string]jor.NodeStatistic)
-        names := make([]string, len(nodeMonitor.Nodes))
-        for i := range nodeMonitor.Nodes {
-            node := nodeMonitor.Nodes[i]
+        names := make([]string, len(nodeMonitor.nodes))
+        for i := range nodeMonitor.nodes {
+            // skip monitor checks before scheduled block
+            if nodeMonitor.watchDog != nil {
+                currentSlotDate, _ := nodeMonitor.timeSettings.GetSlotDateFor(time.Now())
+                schedule, found := nodeMonitor.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
+                if found {
+                    futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
+                    if len(futureSchedule) > 0 {
+                        timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
+                        if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
+                            time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
+                            continue
+                        }
+                    }
+                }
+
+            }
+            // monitor checks
+            node := nodeMonitor.nodes[i]
             names[i] = node.Name
-            nodeStats, bootstrapping, err := nodeMonitor.Nodes[i].API.GetNodeStatistics()
+            nodeStats, bootstrapping, err := nodeMonitor.nodes[i].API.GetNodeStatistics()
             if err == nil {
                 if !bootstrapping {
                     if nodeStats != nil {
@@ -93,24 +132,26 @@ func (nodeMonitor nodeMonitorImpl) Watch() {
             }
         }
         // send block infos to leader jury
-        if nodeMonitor.LeaderJury != nil {
-            nodeMonitor.LeaderJury.BlockStatsChannel <- lastBlockMap
+        nodeMonitor.ListenerManager.mutex.Lock()
+        for i := range nodeMonitor.ListenerManager.nodeStatsListeners {
+            nodeMonitor.ListenerManager.nodeStatsListeners[i] <- lastBlockMap
         }
+        nodeMonitor.ListenerManager.mutex.Unlock()
         maxHeight, nodes := utils.MaxInt(blockHeightMap)
         // update pool tool if configured
-        if nodeMonitor.PoolTool != nil {
-            nodeMonitor.PoolTool.PushLatestTip(maxHeight)
+        if nodeMonitor.poolTool != nil {
+            nodeMonitor.poolTool.PushLatestTip(maxHeight)
         }
         // perform actions
-        for n := range nodeMonitor.Actions {
-            go nodeMonitor.Actions[n].execute(nodeMonitor.Nodes, ActionContext{
-                TimeSettings:         nodeMonitor.TimeSettings,
+        for n := range nodeMonitor.actions {
+            go nodeMonitor.actions[n].execute(nodeMonitor.nodes, ActionContext{
+                TimeSettings:         nodeMonitor.timeSettings,
                 BlockHeightMap:       blockHeightMap,
                 MaximumBlockHeight:   maxHeight,
                 UpToDateNodes:        nodes,
                 LastNodeStatisticMap: lastBlockMap,
             })
         }
-        time.Sleep(time.Duration(nodeMonitor.Behaviour.IntervalInMs) * time.Millisecond)
+        time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
     }
 }

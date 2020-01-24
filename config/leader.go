@@ -3,6 +3,7 @@ package config
 import (
     "github.com/sobitada/go-cardano"
     "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/leader"
     "github.com/sobitada/thor/monitor"
     "io/ioutil"
     "math/big"
@@ -18,7 +19,8 @@ type LeaderConfig struct {
 
 // gets the leader jury for the given configuration. It expects also the nodes
 // for which the leader jury shall be activated.
-func GetLeaderJury(nodes []monitor.Node, timeSettings *cardano.TimeSettings, config General) (*monitor.Jury, error) {
+func GetLeaderJury(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *monitor.ScheduleWatchDog,
+    timeSettings *cardano.TimeSettings, config General) (*leader.Jury, error) {
     leaderConfig := config.Monitor.LeaderConfig
     if leaderConfig != nil {
         if timeSettings != nil {
@@ -47,12 +49,12 @@ func GetLeaderJury(nodes []monitor.Node, timeSettings *cardano.TimeSettings, con
                         }
                         turnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(turnOverExclusionInS))*time.Second)),
                             new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
-                        return monitor.GetLeaderJuryFor(nodes, leaderCert, monitor.JurySettings{
+                        return leader.GetLeaderJuryFor(nodes, mon, watchDog, leaderCert, leader.JurySettings{
                             Window:                      window,
                             ExclusionZone:               exclusionZone,
                             EpochTurnOverExclusionSlots: turnOverExclusionSlots,
                             TimeSettings:                timeSettings,
-                        }), nil
+                        })
                     } else {
                         return nil, ConfigurationError{Path: "monitor/leader_jury/cert", Reason: err.Error()}
                     }

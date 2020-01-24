@@ -1,8 +1,9 @@
-package monitor
+package leader
 
 import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/monitor"
     "time"
 )
 
@@ -11,9 +12,9 @@ import (
 // promoted to a leader. It is important to avoid adversarial forks,
 // because creating such a fork causes public shame! shame! shaming and
 // blacklisting.
-func (jury *Jury) sanityCheck(scheduleChannel chan []api.LeaderAssignment) {
+func (jury *Jury) sanityCheck() {
     for ; ; {
-        assignments := <-scheduleChannel
+        assignments := <-jury.scheduleChannel
         currentSlotDate, err := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
         if err != nil {
             log.Fatalf("[LEADER JURY] Sanity check loop panicked: %v", err.Error())
@@ -48,7 +49,7 @@ func (jury *Jury) sanityCheck(scheduleChannel chan []api.LeaderAssignment) {
 
 // check whether a passive node is not unintentionally promoted to
 // a leader node. If so, demote this node in the sanity check.
-func (jury *Jury) sanityCheckPassiveNode(node Node) {
+func (jury *Jury) sanityCheckPassiveNode(node monitor.Node) {
     leaderIDs, err := node.API.GetRegisteredLeaders()
     if err == nil {
         if len(leaderIDs) > 0 {
@@ -63,13 +64,13 @@ func (jury *Jury) sanityCheckPassiveNode(node Node) {
 // check whether a leader node is promoted to a leader and if it
 // also has not registered the leader twice (which can happens).
 // correct the state of the leader node, if not in proper state.
-func (jury *Jury) sanityCheckLeaderNode(node Node) {
+func (jury *Jury) sanityCheckLeaderNode(node monitor.Node) {
     leaderIDs, err := node.API.GetRegisteredLeaders()
     if err == nil {
         leaderIDNumber := len(leaderIDs)
         if leaderIDNumber == 0 {
             log.Warnf("[LEADER JURY] Node %v is not promoted to leader node as expected.", node.Name)
-            leaderID, err := node.API.PostLeader(jury.Cert)
+            leaderID, err := node.API.PostLeader(jury.cert)
             if err == nil {
                 jury.leader = &currentLeader{name: node.Name, leaderID: leaderID}
                 log.Infof("[LEADER JURY] Node %v is elected and has ID=%v", node.Name, leaderID)

@@ -5,8 +5,8 @@ import (
     "fmt"
     graylog "github.com/gemnasium/logrus-graylog-hook"
     log "github.com/sirupsen/logrus"
-    "github.com/sobitada/go-cardano"
     "github.com/sobitada/thor/config"
+    "github.com/sobitada/thor/leader"
     "github.com/sobitada/thor/monitor"
     "gopkg.in/yaml.v2"
     "io/ioutil"
@@ -14,7 +14,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0-alpha6"
+const ApplicationVersion string = "0.2.0-alpha7"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -72,35 +72,47 @@ func main() {
                     setLoggingConfiguration(conf)
                     nodes := config.GetNodesFromConfig(conf)
                     if len(nodes) > 0 {
-                        var blockChainSettings *cardano.TimeSettings = nil
-                        if conf.Blockchain != nil {
-                            blockChainSettings, err = config.GetTimeSettings(*conf.Blockchain)
-                            if err != nil {
-                                log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
-                            }
+                        timeSettings, err := config.GetTimeSettings(*conf.Blockchain)
+                        if err != nil {
+                            log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
                         }
-                        // Pool Tool
+                        // try to establish the pool tool updater.
                         poolTool, err := config.ParsePoolToolConfig(conf)
                         if err != nil {
-                            fmt.Print(err.Error())
-                            os.Exit(1)
+                            log.Warnf("The pool tool update could not be started. %v", err.Error())
                         }
+                        // try to establish a schedule watchdog.
+                        var watchdog *monitor.ScheduleWatchDog = nil
+                        if timeSettings != nil {
+                            watchdog = monitor.NewScheduleWatchDog(nodes, timeSettings)
+                        } else {
+                            log.Warnf("You have to set the time settings for the block chain for schedule watchdog.")
+                        }
+                        // try to establish the monitor.
+                        nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
+                            parseActions(conf), poolTool, watchdog, timeSettings)
+                        // try to establish the leader jurry.
+                        var leaderJurry *leader.Jury = nil
+                        if timeSettings != nil {
+                            leaderJurry, err = config.GetLeaderJury(nodes, nodeMonitor, watchdog, timeSettings, conf)
+                            if err != nil {
+                                log.Errorf("Leader jury was not configured correctly. %v", err.Error())
+                            }
+                        } else {
+                            log.Warnf("You have to set the time settings for the block chain for leader jury.")
+                        }
+                        // start all tools
                         if poolTool != nil {
                             go poolTool.Start()
                         }
-                        // Leader Jury
-                        leaderJury, err := config.GetLeaderJury(nodes, blockChainSettings, conf)
-                        if err == nil {
-                            if leaderJury != nil {
-                                go leaderJury.Judge()
-                            }
-                        } else {
-                            log.Warnf("Leader jury was not configured correctly. %v", err.Error())
+                        if watchdog != nil {
+                            go watchdog.Watch()
                         }
-                        // Monitor
-                        m := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf), parseActions(conf),
-                            blockChainSettings, poolTool, leaderJury)
-                        m.Watch()
+                        if leaderJurry != nil {
+                            go leaderJurry.Judge()
+                        }
+                        log.Infof("%v@%v", ApplicationName, ApplicationVersion)
+                        nodeMonitor.Watch()
                     } else {
                         fmt.Printf("No passive/leader nodes specified. Nothing to do.")
                         os.Exit(0)
