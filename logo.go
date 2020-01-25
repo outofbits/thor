@@ -18,6 +18,8 @@ const logo = `
        XX                                                                                          XX
        OO                                           %10v                                     OO
 
+
+
 `
 
 func printProlog() {

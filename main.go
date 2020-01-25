@@ -64,7 +64,7 @@ func main() {
     } else {
         args := flag.Args()
         if len(args) == 1 {
-            log.Infof("%v@%v", ApplicationName, ApplicationVersion)
+            printProlog()
             data, err := ioutil.ReadFile(args[0])
             if err == nil {
                 var conf config.General

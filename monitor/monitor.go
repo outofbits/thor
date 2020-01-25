@@ -14,8 +14,8 @@ import (
 type NodeType string
 
 const (
-    Passive NodeType = "passive"
-    LeaderCandidate = "leader-candidate"
+    Passive         NodeType = "passive"
+    LeaderCandidate          = "leader-candidate"
 )
 
 type Node struct {
@@ -82,6 +82,17 @@ func (listenerManager *ListenerManager) RegisterNodeStatisticListener(listener c
     }
 }
 
+func getTypeAbbreviation(t NodeType) string {
+    switch t {
+    case Passive:
+        return "PV"
+    case LeaderCandidate:
+        return "LC"
+    default:
+        return "--"
+    }
+}
+
 // a blocking call which is continuously watching
 // after the Jormungandr nodes.
 func (nodeMonitor *NodeMonitor) Watch() {
@@ -115,20 +126,21 @@ func (nodeMonitor *NodeMonitor) Watch() {
                 if !bootstrapping {
                     if nodeStats != nil {
                         lastBlockMap[node.Name] = *nodeStats
-                        log.Infof("[%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name, nodeStats.LastBlockHeight.String(),
+                        log.Infof("[%s][%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name,
+                            getTypeAbbreviation(node.Type), nodeStats.LastBlockHeight.String(),
                             nodeStats.LastBlockDate.String(),
                             nodeStats.LastBlockHash[:8],
                             utils.GetHumanReadableUpTime(nodeStats.UpTime),
                         )
                         blockHeightMap[node.Name] = nodeStats.LastBlockHeight
                     } else {
-                        log.Errorf("[%s] Node details cannot be fetched.", node.Name)
+                        log.Errorf("[%s][%s] Node details cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
                     }
                 } else {
-                    log.Infof("[%s] --- bootstrapping ---", node.Name)
+                    log.Infof("[%s][%s] --- bootstrapping ---", node.Name, getTypeAbbreviation(node.Type))
                 }
             } else {
-                log.Errorf("[%s] Node details cannot be fetched.", node.Name)
+                log.Errorf("[%s][%s] Node details cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
             }
         }
         // send block infos to leader jury
