@@ -14,7 +14,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0-alpha7"
+const ApplicationVersion string = "0.2.0-beta"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -64,6 +64,7 @@ func main() {
     } else {
         args := flag.Args()
         if len(args) == 1 {
+            log.Infof("%v@%v", ApplicationName, ApplicationVersion)
             data, err := ioutil.ReadFile(args[0])
             if err == nil {
                 var conf config.General
@@ -111,7 +112,6 @@ func main() {
                         if leaderJurry != nil {
                             go leaderJurry.Judge()
                         }
-                        log.Infof("%v@%v", ApplicationName, ApplicationVersion)
                         nodeMonitor.Watch()
                     } else {
                         fmt.Printf("No passive/leader nodes specified. Nothing to do.")
