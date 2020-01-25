@@ -112,7 +112,11 @@ func (watchDog *ScheduleWatchDog) Watch() {
                     len(newSchedule), currentSlotDate.GetEpoch().String())
                 next = nextEpochStart(currentSlotDate, *watchDog.timeSettings).GetEndDateTime().Sub(time.Now())
             } else {
-                next = 10 * time.Minute
+                if currentSlotDate.GetSlot().Cmp(new(big.Int).SetInt64(500)) <= 0 {
+                    next = 50 * watchDog.timeSettings.SlotDuration
+                } else {
+                    next = 10 * time.Minute
+                }
             }
         }
         log.Infof("[SCHEDULE] Waiting %v for next check.", utils.GetHumanReadableUpTime(next))
