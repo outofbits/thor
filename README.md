@@ -19,6 +19,7 @@ This tool is centered aorund peers and a peer must be uniquely identified by a n
 | type | specifies whether a peer is passive (i.e. "passive") or a leader candidate (i.e. "leader-candidate"). This property is only relevant for the leader election jury, the default is "passive". | No |
 | maxBlockLag | a property for the monitor that specifies how many blocks a peer can lag behind the maximum known block height before taking a certain action (e.g. shutdown, reporting, etc.)  | No |
 | maxTimeSinceLastBlock | a property for the monitor that specifies how many milliseconds the creation date of most recently received block can lie behind | No |
+|warmUpTime| a property that tells the monitor to execute no actions (e.g. shutdown) in the first specified number of milliseconds |No|
 
 Example:
 ```
