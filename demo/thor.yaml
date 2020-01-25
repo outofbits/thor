@@ -1,14 +1,22 @@
 logging:
   level: info
+blockchain:
+  genesisBlockHash: "8e4d2a343f3dcf9330ad9035b3e8d168e6728904262f2c434a4f8f934ec7b676"
+  genesisBlockTime: "2019-12-13T19:13:37+00:00"
+  slotsPerEpoch: 43200
+  slotDuration: 2000
 peers:
   - name: "Local 1"
     api: http://jormungandr-1:3101
-    maxBlockLag: 40
+    maxBlockLag: 1
+    maxTimeSinceLastBlock: 60000
   - name: "Local 2"
     api: http://jormungandr-2:3101
-    maxBlockLag: 40
+    maxBlockLag: 1
+    maxTimeSinceLastBlock: 60000
   - name: "Local 3"
     api: http://jormungandr-3:3101
-    maxBlockLag: 40
+    maxBlockLag: 1
+    maxTimeSinceLastBlock: 60000
 monitor:
   interval: 1000

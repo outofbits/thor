@@ -1,8 +1,14 @@
 version: '3'
 
 services:
+  monitor:
+    build: ../
+    restart: always
+    command: ["/conf/thor.yaml"]
+    volumes:
+      - ./thor.yaml:/conf/thor.yaml
   jormungandr-1:
-    image: adalove/jormungandr:1.1-jormungandr0.8.5
+    image: adalove/jormungandr:1.2-jormungandr0.8.6
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -10,11 +16,12 @@ services:
       - NODE_CONFIG_PATH=/conf/node-config.yaml
     ports:
       - "3001:3001"
+      - "3101:3101"
     volumes:
       - node-data-1:/data
       - ./node-config-1.yaml:/conf/node-config.yaml
   jormungandr-2:
-    image: adalove/jormungandr:1.1-jormungandr0.8.5
+    image: adalove/jormungandr:1.2-jormungandr0.8.6
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -22,11 +29,12 @@ services:
       - NODE_CONFIG_PATH=/conf/node-config.yaml
     ports:
       - "3002:3002"
+      - "3102:3101"
     volumes:
       - node-data-2:/data
       - ./node-config-2.yaml:/conf/node-config.yaml
   jormungandr-3:
-    image: adalove/jormungandr:1.1-jormungandr0.8.5
+    image: adalove/jormungandr:1.2-jormungandr0.8.6
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -34,20 +42,12 @@ services:
       - NODE_CONFIG_PATH=/conf/node-config.yaml
     ports:
       - "3003:3003"
+      - "3103:3101"
     volumes:
       - node-data-3:/data
       - ./node-config-3.yaml:/conf/node-config.yaml
-  monitor:
-    build: ../
-    restart: always
-    command: ["/conf/thor.yaml"]
-    volumes:
-      - ./thor.yaml:/conf/thor.yaml
 
 volumes:
-  node-data-1:
-    external: true
-  node-data-2:
-    external: true
-  node-data-3:
-    external: true
+  node-data-1: {}
+  node-data-2: {}
+  node-data-3: {}
