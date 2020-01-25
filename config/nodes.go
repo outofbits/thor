@@ -42,8 +42,12 @@ func GetNodesFromConfig(config General) []monitor.Node {
             } else {
                 log.Warnf("Node '%v' has not set any maximum time since new block has been received.", peerConfig.Name)
             }
+            t := peerConfig.Type
+            if t == "" {
+                t = monitor.Passive
+            }
             nodeList = append(nodeList, monitor.Node{
-                Type:                  peerConfig.Type,
+                Type:                  t,
                 Name:                  peerConfig.Name,
                 API:                   api,
                 MaxBlockLag:           peerConfig.MaxBlockLag,
