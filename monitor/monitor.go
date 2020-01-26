@@ -106,6 +106,8 @@ func (nodeMonitor *NodeMonitor) Watch() {
                 if found {
                     futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
                     if len(futureSchedule) > 0 {
+                        log.Infof("Number of leader assignments ahead: %v", len(futureSchedule))
+                        log.Infof("Next leader assignments at %v", futureSchedule[0])
                         timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
                         if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
                             time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
@@ -113,7 +115,6 @@ func (nodeMonitor *NodeMonitor) Watch() {
                         }
                     }
                 }
-
             }
             // monitor checks
             node := nodeMonitor.nodes[i]
