@@ -2,6 +2,9 @@ package pooltool
 
 import (
     log "github.com/sirupsen/logrus"
+    jor "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/monitor"
+    "github.com/sobitada/thor/utils"
     "math/big"
     "net/http"
     "net/url"
@@ -17,15 +20,18 @@ const tipPostLimit time.Duration = 30 * time.Second
 // id, pool id and the hash of the genesis
 // block.
 type PoolTool struct {
-    poolID      string
-    userID      string
-    genesisHash string
-    latestTip   *big.Int
+    poolID           string
+    userID           string
+    genesisHash      string
+    latestTip        *big.Int
+    latestTipChannel chan map[string]jor.NodeStatistic
 }
 
 // constructs a new pool tool with the given configuration.
-func GetPoolTool(poolID string, userID string, genesisHash string) *PoolTool {
-    return &PoolTool{poolID: poolID, userID: userID, genesisHash: genesisHash, latestTip: nil}
+func GetPoolTool(mon *monitor.NodeMonitor, poolID string, userID string, genesisHash string) *PoolTool {
+    listener := make(chan map[string]jor.NodeStatistic)
+    mon.ListenerManager.RegisterNodeStatisticListener(listener)
+    return &PoolTool{poolID: poolID, userID: userID, genesisHash: genesisHash, latestTip: nil, latestTipChannel: listener}
 }
 
 // informs pool tool about the latest block height.
@@ -33,8 +39,23 @@ func (poolTool *PoolTool) PushLatestTip(tip *big.Int) {
     poolTool.latestTip = tip
 }
 
+func (poolTool *PoolTool) updateTip() {
+    for ; ; {
+        latestBlockStats := <-poolTool.latestTipChannel
+        // compute max
+        blockHeightMap := make(map[string]*big.Int)
+        for name, nodeStats := range latestBlockStats {
+            blockHeightMap[name] = nodeStats.LastBlockHeight
+        }
+        maxHeight, _ := utils.MaxInt(blockHeightMap)
+        // update
+        poolTool.latestTip = maxHeight
+    }
+}
+
 // starts the pool tool update client.
 func (poolTool *PoolTool) Start() {
+    go poolTool.updateTip()
     for ; ; {
         if poolTool.latestTip != nil && poolTool.latestTip.Cmp(new(big.Int).SetUint64(0)) > 0 {
             err := poolTool.postLatestTip(poolTool.latestTip)

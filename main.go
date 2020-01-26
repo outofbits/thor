@@ -14,7 +14,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0-beta"
+const ApplicationVersion string = "0.2.0-rc1"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -77,11 +77,6 @@ func main() {
                         if err != nil {
                             log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
                         }
-                        // try to establish the pool tool updater.
-                        poolTool, err := config.ParsePoolToolConfig(conf)
-                        if err != nil {
-                            log.Warnf("The pool tool update could not be started. %v", err.Error())
-                        }
                         // try to establish a schedule watchdog.
                         var watchdog *monitor.ScheduleWatchDog = nil
                         if timeSettings != nil {
@@ -91,7 +86,12 @@ func main() {
                         }
                         // try to establish the monitor.
                         nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
-                            parseActions(conf), poolTool, watchdog, timeSettings)
+                            parseActions(conf), watchdog, timeSettings)
+                        // try to establish the pool tool updater.
+                        poolTool, err := config.ParsePoolToolConfig(nodeMonitor, conf)
+                        if err != nil {
+                            log.Warnf("The pool tool update could not be started. %v", err.Error())
+                        }
                         // try to establish the leader jurry.
                         var leaderJurry *leader.Jury = nil
                         if timeSettings != nil {

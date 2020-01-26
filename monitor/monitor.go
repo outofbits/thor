@@ -4,7 +4,6 @@ import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     jor "github.com/sobitada/go-jormungandr/api"
-    "github.com/sobitada/thor/pooltool"
     "github.com/sobitada/thor/utils"
     "math/big"
     "sync"
@@ -39,7 +38,6 @@ type NodeMonitor struct {
     behaviour       NodeMonitorBehaviour
     actions         []Action
     ListenerManager *ListenerManager
-    poolTool        *pooltool.PoolTool
     watchDog        *ScheduleWatchDog
     timeSettings    *cardano.TimeSettings
 }
@@ -50,7 +48,7 @@ type NodeMonitorBehaviour struct {
     IntervalInMs uint32
 }
 
-func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action, poolTool *pooltool.PoolTool,
+func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action,
     watchdog *ScheduleWatchDog, settings *cardano.TimeSettings) *NodeMonitor {
     return &NodeMonitor{
         nodes:        nodes,
@@ -58,7 +56,6 @@ func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Acti
         actions:      actions,
         timeSettings: settings,
         watchDog:     watchdog,
-        poolTool:     poolTool,
         ListenerManager: &ListenerManager{
             mutex: &sync.Mutex{},
         },
@@ -150,10 +147,6 @@ func (nodeMonitor *NodeMonitor) Watch() {
         }
         nodeMonitor.ListenerManager.mutex.Unlock()
         maxHeight, nodes := utils.MaxInt(blockHeightMap)
-        // update pool tool if configured
-        if nodeMonitor.poolTool != nil {
-            nodeMonitor.poolTool.PushLatestTip(maxHeight)
-        }
         // perform actions
         for n := range nodeMonitor.actions {
             go nodeMonitor.actions[n].execute(nodeMonitor.nodes, ActionContext{
