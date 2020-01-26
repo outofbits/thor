@@ -183,6 +183,7 @@ func (jury *Jury) Judge() {
                 // no leader change if in exclusion zone.
                 if len(schedule) > 0 {
                     futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.settings.TimeSettings.SlotDuration), schedule)
+                    log.Infof("Number of leader assignments ahead: %v", len(futureSchedule))
                     if len(futureSchedule) > 0 {
                         timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
                         if timeToNextBlock < jury.settings.ExclusionZone {
