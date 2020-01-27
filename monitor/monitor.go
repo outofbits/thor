@@ -4,6 +4,7 @@ import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     jor "github.com/sobitada/go-jormungandr/api"
+    "github.com/sobitada/thor/threading"
     "github.com/sobitada/thor/utils"
     "math/big"
     "sync"
@@ -90,47 +91,75 @@ func getTypeAbbreviation(t NodeType) string {
     }
 }
 
+type nodeStatisticResponse struct {
+    bootstrapping bool
+    nodeStats     *jor.NodeStatistic
+}
+
+func getNodeStatistics(input interface{}) threading.Response {
+    node := input.(Node)
+    nodeStats, bootstrapping, err := node.API.GetNodeStatistics()
+    if err != nil {
+        return threading.Response{
+            Context: node,
+            Error:   err,
+        }
+    } else {
+        return threading.Response{
+            Context: node,
+            Data: &nodeStatisticResponse{
+                bootstrapping: bootstrapping,
+                nodeStats:     nodeStats,
+            },
+        }
+    }
+}
+
 // a blocking call which is continuously watching
 // after the Jormungandr nodes.
 func (nodeMonitor *NodeMonitor) Watch() {
     log.Infof("Starting to watch nodes.")
     for ; ; {
-        blockHeightMap := make(map[string]*big.Int)
-        lastBlockMap := make(map[string]jor.NodeStatistic)
-        names := make([]string, len(nodeMonitor.nodes))
-        for i := range nodeMonitor.nodes {
-            // skip monitor checks before scheduled block
-            if nodeMonitor.watchDog != nil {
-                currentSlotDate, _ := nodeMonitor.timeSettings.GetSlotDateFor(time.Now())
-                schedule, found := nodeMonitor.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
-                if found {
-                    futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
-                    if len(futureSchedule) > 0 {
-                        log.Infof("Number of leader assignments ahead: %v", len(futureSchedule))
-                        log.Infof("Next leader assignments at %v", futureSchedule[0])
-                        timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
-                        if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
-                            time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
-                            continue
-                        }
+        start := time.Now()
+        // skip monitor checks before scheduled block
+        if nodeMonitor.watchDog != nil {
+            currentSlotDate, _ := nodeMonitor.timeSettings.GetSlotDateFor(time.Now())
+            schedule, found := nodeMonitor.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
+            if found {
+                futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
+                if len(futureSchedule) > 0 {
+                    log.Infof("Number of leader assignments ahead: %v", len(futureSchedule))
+                    log.Infof("Next leader assignments at %v", futureSchedule[0].ScheduleTime)
+                    timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
+                    if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
+                        time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
+                        continue
                     }
                 }
             }
-            // monitor checks
-            node := nodeMonitor.nodes[i]
-            names[i] = node.Name
-            nodeStats, bootstrapping, err := nodeMonitor.nodes[i].API.GetNodeStatistics()
-            if err == nil {
-                if !bootstrapping {
-                    if nodeStats != nil {
-                        lastBlockMap[node.Name] = *nodeStats
+        }
+        // get node statistics
+        blockHeightMap := make(map[string]*big.Int)
+        lastBlockMap := make(map[string]jor.NodeStatistic)
+        inputs := make([]interface{}, len(nodeMonitor.nodes))
+        for i, node := range nodeMonitor.nodes {
+            inputs[i] = node
+        }
+        responses := threading.Complete(inputs, getNodeStatistics)
+        for _, response := range responses {
+            node := response.Context.(Node)
+            if response.Error == nil && response.Data != nil {
+                statsResponse := response.Data.(*nodeStatisticResponse)
+                if !statsResponse.bootstrapping {
+                    if statsResponse.nodeStats != nil {
+                        lastBlockMap[node.Name] = *statsResponse.nodeStats
                         log.Infof("[%s][%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name,
-                            getTypeAbbreviation(node.Type), nodeStats.LastBlockHeight.String(),
-                            nodeStats.LastBlockDate.String(),
-                            nodeStats.LastBlockHash[:8],
-                            utils.GetHumanReadableUpTime(nodeStats.UpTime),
+                            getTypeAbbreviation(node.Type), statsResponse.nodeStats.LastBlockHeight.String(),
+                            statsResponse.nodeStats.LastBlockDate.String(),
+                            statsResponse.nodeStats.LastBlockHash[:8],
+                            utils.GetHumanReadableUpTime(statsResponse.nodeStats.UpTime),
                         )
-                        blockHeightMap[node.Name] = nodeStats.LastBlockHeight
+                        blockHeightMap[node.Name] = statsResponse.nodeStats.LastBlockHeight
                     } else {
                         log.Errorf("[%s][%s] Node details cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
                     }
@@ -158,6 +187,9 @@ func (nodeMonitor *NodeMonitor) Watch() {
                 LastNodeStatisticMap: lastBlockMap,
             })
         }
-        time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
+        diff := start.Add(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond).Sub(time.Now())
+        if diff > 0 {
+            time.Sleep(diff)
+        }
     }
 }
