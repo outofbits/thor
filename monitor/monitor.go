@@ -7,6 +7,7 @@ import (
     "github.com/sobitada/thor/threading"
     "github.com/sobitada/thor/utils"
     "math/big"
+    "sort"
     "sync"
     "time"
 )
@@ -146,6 +147,11 @@ func (nodeMonitor *NodeMonitor) Watch() {
             inputs[i] = node
         }
         responses := threading.Complete(inputs, getNodeStatistics)
+        sort.Slice(responses, func(i, j int) bool {
+            nodeA := responses[i].Context.(Node)
+            nodeB := responses[i].Context.(Node)
+            return nodeA.Name < nodeB.Name
+        })
         for _, response := range responses {
             node := response.Context.(Node)
             if response.Error == nil && response.Data != nil {
