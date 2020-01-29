@@ -147,9 +147,9 @@ func (nodeMonitor *NodeMonitor) Watch() {
             inputs[i] = node
         }
         responses := threading.Complete(inputs, getNodeStatistics)
-        sort.Slice(responses, func(i, j int) bool {
+        sort.SliceStable(responses, func(i, j int) bool {
             nodeA := responses[i].Context.(Node)
-            nodeB := responses[i].Context.(Node)
+            nodeB := responses[j].Context.(Node)
             return nodeA.Name < nodeB.Name
         })
         for _, response := range responses {
