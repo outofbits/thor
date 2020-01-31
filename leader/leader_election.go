@@ -44,6 +44,9 @@ type JurySettings struct {
     // specifies the number of slots after an epoch
     // turn over in which no leader change is allowed.
     EpochTurnOverExclusionSlots *big.Int
+    // specifies the number of slots before an epoch
+    // turn over in which no leader change is allowed.
+    PreEpochTurnOverExclusionSlots *big.Int
     // time settings for the block chain such as
     // creation time of the genesis block, slots
     // per epoch and slot duration.
@@ -65,6 +68,7 @@ func GetLeaderJuryFor(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *
     }
     if len(nodeMap) == 0 {
         log.Warnf("No node has been specified as leader candidate.")
+        return nil, nil
     }
     // register the node statistics listener
     if mon == nil {
@@ -124,17 +128,16 @@ func (jury *Jury) scanForLeader() *currentLeader {
     return leader
 }
 
-// the current strategy to handle epoch turn overs is to stick to the
-// current leader for a while, and then bootstrap one after another of
-// the other passive nodes.
-func shutdownTrustedNodesGracefully(leaderName *string, nodes map[string]monitor.Node) {
-    for name, node := range nodes {
-        if leaderName == nil || name != *leaderName {
-            log.Debugf("Node %v is going to be shutdown gracefully.", name)
-            monitor.ShutDownNode(node)
-            time.Sleep(1 * time.Minute)
+//
+func mapWithViableLeaders(leaders []string, oldMap map[string]*big.Float) map[string]*big.Float {
+    newMap := make(map[string]*big.Float)
+    for _, leader := range leaders {
+        value, found := oldMap[leader]
+        if found {
+            newMap[leader] = value
         }
     }
+    return newMap
 }
 
 // starts the leader jury and let it continuously run. it reads all the checkpoints
@@ -149,9 +152,9 @@ func (jury *Jury) Judge() {
         jury.leader = leader
     }
     // start sanity management
-    go jury.sanityCheck()
+    go jury.startSanityChecks()
+    go jury.turnOverHandling()
     // turn over preparation
-    turnOverBootStrap := make(map[string]bool)
     for ; ; {
         latestBlockStats := <-jury.nodeStatsChannel
         // check the leader schedule
@@ -160,20 +163,7 @@ func (jury *Jury) Judge() {
         if !found || schedule == nil {
             schedule = []api.LeaderAssignment{}
         }
-        log.Debugf("Number of leader assignments: %v", len(schedule))
-        // bootstrap non leader nodes after epoch turn over gracefully. //TODO: make stateless
-        if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
-            bootstrapped, found := turnOverBootStrap[currentSlotDate.GetEpoch().String()]
-            if !found || !bootstrapped {
-                log.Debugf("[LEADER JURY] Entry into exclusion zone, none leader nodes are shutdown.")
-                if jury.leader != nil {
-                    go shutdownTrustedNodesGracefully(&jury.leader.name, jury.nodes)
-                } else {
-                    go shutdownTrustedNodesGracefully(nil, jury.nodes)
-                }
-                turnOverBootStrap[currentSlotDate.GetEpoch().String()] = true
-            }
-        }
+        log.Debugf("[LEADER JURY] Number of leader assignments: %v", len(schedule))
         // check health
         mem.addBlockHeights(latestBlockStats)
         maxConf, maxConfNodes := utils.MinFloat(mem.computeHealth())
@@ -191,9 +181,15 @@ func (jury *Jury) Judge() {
                         }
                     }
                 }
-                // no leader change after in exclusion zone after epoch turn over.
-                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) < 0 {
-                    log.Warnf("[LEADER JURY] In exclusion zone, no leader change will be performed.")
+                // no leader change in exclusion zone after epoch turn over.
+                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) <= 0 {
+                    log.Warnf("[LEADER JURY] In exclusion zone after epoch turn over, no leader change will be performed.")
+                    continue
+                }
+                // no leader change in exclusion zone before epoch turn over.
+                if new(big.Int).Sub(jury.settings.TimeSettings.SlotsPerEpoch,
+                    currentSlotDate.GetSlot()).Cmp(jury.settings.PreEpochTurnOverExclusionSlots) <= 0 {
+                    log.Warnf("[LEADER JURY] In exclusion zone before epoch turn over, no leader change will be performed.")
                     continue
                 }
                 // change leader.

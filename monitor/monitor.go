@@ -45,9 +45,8 @@ type NodeMonitor struct {
 }
 
 type NodeMonitorBehaviour struct {
-    // interval of the monitor checking the status of
-    // nodes.
-    IntervalInMs uint32
+    // interval of the monitor checking the status of nodes.
+    Interval time.Duration
 }
 
 func GetNodeMonitor(nodes []Node, behaviour NodeMonitorBehaviour, actions []Action,
@@ -133,7 +132,7 @@ func (nodeMonitor *NodeMonitor) Watch() {
                     log.Infof("Next leader assignments at %v", futureSchedule[0].ScheduleTime)
                     timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
                     if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
-                        time.Sleep(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond)
+                        time.Sleep(nodeMonitor.behaviour.Interval)
                         continue
                     }
                 }
@@ -167,13 +166,13 @@ func (nodeMonitor *NodeMonitor) Watch() {
                         )
                         blockHeightMap[node.Name] = statsResponse.nodeStats.LastBlockHeight
                     } else {
-                        log.Errorf("[%s][%s] Node details cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
+                        log.Errorf("[%s][%s] Node statistics cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
                     }
                 } else {
                     log.Infof("[%s][%s] --- bootstrapping ---", node.Name, getTypeAbbreviation(node.Type))
                 }
             } else {
-                log.Errorf("[%s][%s] Node details cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
+                log.Errorf("[%s][%s] Node statistics cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
             }
         }
         // send block infos to leader jury
@@ -193,7 +192,7 @@ func (nodeMonitor *NodeMonitor) Watch() {
                 LastNodeStatisticMap: lastBlockMap,
             })
         }
-        diff := start.Add(time.Duration(nodeMonitor.behaviour.IntervalInMs) * time.Millisecond).Sub(time.Now())
+        diff := start.Add(nodeMonitor.behaviour.Interval).Sub(time.Now())
         if diff > 0 {
             time.Sleep(diff)
         }

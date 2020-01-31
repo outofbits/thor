@@ -22,14 +22,33 @@ type Node struct {
     MaxTimeSinceLastBlockInMs int64 `yaml:"maxTimeSinceLastBlock"`
     // warm up time in which no shutdown shall be executed.
     WarmUpTime int64 `yaml:"warmUpTime"`
+    // timeout in milliseconds for API calls to this node.
+    Timeout uint32 `yaml:"apiTimeout"`
 }
 
 // extracts the node details from the configuration file.
-func GetNodesFromConfig(config General) []monitor.Node {
+func GetNodesFromConfig(config General) ([]monitor.Node, error) {
     nodeList := make([]monitor.Node, 0)
+    nodeNameMap := make(map[string]bool)
     for i := range config.Peers {
         peerConfig := config.Peers[i]
-        api, err := jor.GetAPIFromHost(peerConfig.APIUrl, 3*time.Second)
+        _, found := nodeNameMap[peerConfig.Name]
+        if found {
+            return nil, ConfigurationError{
+                Path:   "peers/name",
+                Reason: "The name of a peer must be unique.",
+            }
+        } else {
+            nodeNameMap[peerConfig.Name] = true
+        }
+        // API timeout
+        var apiTimeout time.Duration
+        if peerConfig.Timeout == 0 {
+            apiTimeout = 3 * time.Second
+        } else {
+            apiTimeout = time.Duration(peerConfig.Timeout) * time.Millisecond
+        }
+        api, err := jor.GetAPIFromHost(peerConfig.APIUrl, apiTimeout)
         if err == nil {
             var maxTimeSinceLastBlock time.Duration
             // maximum block lag.
@@ -58,5 +77,5 @@ func GetNodesFromConfig(config General) []monitor.Node {
             log.Warn("[%s] Could not build an API for this peer from the specified configuration. %s", err.Error())
         }
     }
-    return nodeList
+    return nodeList, nil
 }

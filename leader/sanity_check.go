@@ -12,7 +12,7 @@ import (
 // promoted to a leader. It is important to avoid adversarial forks,
 // because creating such a fork causes public shame! shame! shaming and
 // blacklisting.
-func (jury *Jury) sanityCheck() {
+func (jury *Jury) startSanityChecks() {
     for ; ; {
         assignments := <-jury.scheduleChannel
         currentSlotDate, err := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
@@ -22,7 +22,7 @@ func (jury *Jury) sanityCheck() {
             continue
         }
         nextAssignments := api.FilterLeaderLogsBefore(time.Now().Add(2*time.Minute),
-            api.SortLeaderLogsByScheduleTime(api.FilterForLeaderLogsInEpoch(currentSlotDate.GetEpoch(), assignments)))
+            api.SortLeaderLogsByScheduleTime(api.GetLeaderLogsInEpoch(currentSlotDate.GetEpoch(), assignments)))
         log.Debugf("[LEADER JURY] Started sanity check for %v assignments ahead. ", len(nextAssignments))
         for i := 0; i < len(nextAssignments); i++ {
             waitDuration := nextAssignments[i].ScheduleTime.Sub(time.Now()) - 1*time.Minute
@@ -45,6 +45,20 @@ func (jury *Jury) sanityCheck() {
         }
         time.Sleep(1 * time.Minute)
     }
+}
+
+// check the sanity of all nodes.
+func (jury *Jury) sanityCheck() {
+    jury.leaderMutex.Lock()
+    for name, node := range jury.nodes {
+        log.Infof("[LEADER JURY] Sanity check node %v.", name)
+        if jury.leader != nil && jury.leader.name == name {
+            jury.sanityCheckLeaderNode(node)
+        } else {
+            jury.sanityCheckPassiveNode(node)
+        }
+    }
+    jury.leaderMutex.Unlock()
 }
 
 // check whether a passive node is not unintentionally promoted to

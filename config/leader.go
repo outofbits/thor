@@ -11,10 +11,11 @@ import (
 )
 
 type LeaderConfig struct {
-    CertPath                 string `yaml:"cert"`
-    Window                   int    `yaml:"window"`
-    ExclusionZoneInS         uint32 `yaml:"exclusion_zone"`
-    TurnOverExclusionZoneInS uint32 `yaml:"turnover_exclusion_zone"`
+    CertPath                    string `yaml:"cert"`
+    Window                      int    `yaml:"window"`
+    ExclusionZoneInS            uint32 `yaml:"exclusionZone"`
+    TurnOverExclusionZoneInS    uint32 `yaml:"turnoverExclusionZone"`
+    PreTurnOverExclusionZoneInS uint32 `yaml:"preTurnoverExclusionZone"`
 }
 
 // gets the leader jury for the given configuration. It expects also the nodes
@@ -49,11 +50,21 @@ func GetLeaderJury(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *mon
                         }
                         turnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(turnOverExclusionInS))*time.Second)),
                             new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
+                        // pre epoch turn over exclusion zone for leader change.
+                        var preTurnOverExclusionSlots *big.Int
+                        var preTurnOverExclusionInS uint32 = 60
+                        if leaderConfig.PreTurnOverExclusionZoneInS > 0 {
+                            preTurnOverExclusionInS = leaderConfig.PreTurnOverExclusionZoneInS
+                        }
+                        preTurnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(preTurnOverExclusionInS))*time.Second)),
+                            new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
+
                         return leader.GetLeaderJuryFor(nodes, mon, watchDog, leaderCert, leader.JurySettings{
-                            Window:                      window,
-                            ExclusionZone:               exclusionZone,
-                            EpochTurnOverExclusionSlots: turnOverExclusionSlots,
-                            TimeSettings:                timeSettings,
+                            Window:                         window,
+                            ExclusionZone:                  exclusionZone,
+                            EpochTurnOverExclusionSlots:    turnOverExclusionSlots,
+                            PreEpochTurnOverExclusionSlots: preTurnOverExclusionSlots,
+                            TimeSettings:                   timeSettings,
                         })
                     } else {
                         return nil, ConfigurationError{Path: "monitor/leader_jury/cert", Reason: err.Error()}
