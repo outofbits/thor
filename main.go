@@ -71,50 +71,55 @@ func main() {
                 err = yaml.UnmarshalStrict(data, &conf)
                 if err == nil {
                     setLoggingConfiguration(conf)
-                    nodes := config.GetNodesFromConfig(conf)
-                    if len(nodes) > 0 {
-                        timeSettings, err := config.GetTimeSettings(*conf.Blockchain)
-                        if err != nil {
-                            log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
-                        }
-                        // try to establish a schedule watchdog.
-                        var watchdog *monitor.ScheduleWatchDog = nil
-                        if timeSettings != nil {
-                            watchdog = monitor.NewScheduleWatchDog(nodes, timeSettings)
-                        } else {
-                            log.Warnf("You have to set the time settings for the block chain for schedule watchdog.")
-                        }
-                        // try to establish the monitor.
-                        nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
-                            parseActions(conf), watchdog, timeSettings)
-                        // try to establish the pool tool updater.
-                        poolTool, err := config.ParsePoolToolConfig(nodeMonitor, conf)
-                        if err != nil {
-                            log.Warnf("The pool tool update could not be started. %v", err.Error())
-                        }
-                        // try to establish the leader jurry.
-                        var leaderJurry *leader.Jury = nil
-                        if timeSettings != nil {
-                            leaderJurry, err = config.GetLeaderJury(nodes, nodeMonitor, watchdog, timeSettings, conf)
+                    nodes, err := config.GetNodesFromConfig(conf)
+                    if err == nil {
+                        if len(nodes) > 0 {
+                            timeSettings, err := config.GetTimeSettings(*conf.Blockchain)
                             if err != nil {
-                                log.Errorf("Leader jury was not configured correctly. %v", err.Error())
+                                log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
                             }
+                            // try to establish a schedule watchdog.
+                            var watchdog *monitor.ScheduleWatchDog = nil
+                            if timeSettings != nil {
+                                watchdog = monitor.NewScheduleWatchDog(nodes, timeSettings)
+                            } else {
+                                log.Warnf("You have to set the time settings for the block chain for schedule watchdog.")
+                            }
+                            // try to establish the monitor.
+                            nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
+                                parseActions(conf), watchdog, timeSettings)
+                            // try to establish the pool tool updater.
+                            poolTool, err := config.ParsePoolToolConfig(nodeMonitor, conf)
+                            if err != nil {
+                                log.Warnf("The pool tool update could not be started. %v", err.Error())
+                            }
+                            // try to establish the leader jurry.
+                            var leaderJurry *leader.Jury = nil
+                            if timeSettings != nil {
+                                leaderJurry, err = config.GetLeaderJury(nodes, nodeMonitor, watchdog, timeSettings, conf)
+                                if err != nil {
+                                    log.Errorf("Leader jury was not configured correctly. %v", err.Error())
+                                }
+                            } else {
+                                log.Warnf("You have to set the time settings for the block chain for leader jury.")
+                            }
+                            // start all tools
+                            if poolTool != nil {
+                                go poolTool.Start()
+                            }
+                            if watchdog != nil {
+                                go watchdog.Watch()
+                            }
+                            if leaderJurry != nil {
+                                go leaderJurry.Judge()
+                            }
+                            nodeMonitor.Watch()
                         } else {
-                            log.Warnf("You have to set the time settings for the block chain for leader jury.")
+                            fmt.Printf("No passive/leader nodes specified. Nothing to do.")
+                            os.Exit(0)
                         }
-                        // start all tools
-                        if poolTool != nil {
-                            go poolTool.Start()
-                        }
-                        if watchdog != nil {
-                            go watchdog.Watch()
-                        }
-                        if leaderJurry != nil {
-                            go leaderJurry.Judge()
-                        }
-                        nodeMonitor.Watch()
                     } else {
-                        fmt.Printf("No passive/leader nodes specified. Nothing to do.")
+                        fmt.Printf("Peers cannot be parsed. %v", err.Error())
                         os.Exit(0)
                     }
                 } else {
