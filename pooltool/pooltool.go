@@ -76,6 +76,7 @@ func (poolTool *PoolTool) postLatestTip(tip *big.Int) error {
         q.Set("userid", poolTool.userID)
         q.Set("genesispref", poolTool.genesisHash)
         q.Set("mytip", tip.String())
+        q.Set("platform", "thor")
         u.RawQuery = q.Encode()
         response, err := http.Get(u.String())
         if err == nil {
