@@ -1,14 +1,28 @@
 version: '3'
 
 services:
+  prometheus:
+    image: prom/prometheus:v2.15.1
+    network_mode: host
+    restart: always
+    command:
+      - '--config.file=/conf/config.yaml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - ./prometheus.yaml:/conf/config.yaml
+      - prometheus_data:/prometheus
+    ports:
+      - 127.0.0.1:9090:9090
   monitor:
     build: ../
     restart: always
     command: ["/conf/thor.yaml"]
     volumes:
       - ./thor.yaml:/conf/thor.yaml
+    ports:
+      - "9200:9200"
   jormungandr-1:
-    image: adalove/jormungandr:1.2-jormungandr0.8.6
+    image: adalove/jormungandr:1.2-jormungandr0.8.9
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -21,7 +35,7 @@ services:
       - node-data-1:/data
       - ./node-config-1.yaml:/conf/node-config.yaml
   jormungandr-2:
-    image: adalove/jormungandr:1.2-jormungandr0.8.6
+    image: adalove/jormungandr:1.2-jormungandr0.8.9
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -34,7 +48,7 @@ services:
       - node-data-2:/data
       - ./node-config-2.yaml:/conf/node-config.yaml
   jormungandr-3:
-    image: adalove/jormungandr:1.2-jormungandr0.8.6
+    image: adalove/jormungandr:1.2-jormungandr0.8.9
     restart: always
     environment:
       - RUST_BACKTRACE=full
@@ -51,3 +65,4 @@ volumes:
   node-data-1: {}
   node-data-2: {}
   node-data-3: {}
+  prometheus_data: {}
