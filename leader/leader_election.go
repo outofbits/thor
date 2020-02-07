@@ -41,9 +41,6 @@ type JurySettings struct {
     // the time window in front of a scheduled
     // block in which no leader change is allowed.
     ExclusionZone time.Duration
-    // specifies the number of slots after an epoch
-    // turn over in which no leader change is allowed.
-    EpochTurnOverExclusionSlots *big.Int
     // specifies the number of slots before an epoch
     // turn over in which no leader change is allowed.
     PreEpochTurnOverExclusionSlots *big.Int
@@ -128,7 +125,9 @@ func (jury *Jury) scanForLeader() *currentLeader {
     return leader
 }
 
-//
+// takes the given old map and only returns the entries of the map
+// in a new map that are associated with a key in the given
+// list of leaders, i.e. it filters all
 func mapWithViableLeaders(leaders []string, oldMap map[string]*big.Float) map[string]*big.Float {
     newMap := make(map[string]*big.Float)
     for _, leader := range leaders {
@@ -165,35 +164,36 @@ func (jury *Jury) Judge() {
         }
         log.Debugf("[LEADER JURY] Number of leader assignments: %v", len(schedule))
         // check health
+        viableNodeNames := jury.watchDog.GetViableLeaderNodes()
+        log.Infof("[LEADER JURY] Viable Nodes are [%v].", strings.Join(viableNodeNames, ","))
         mem.addBlockHeights(latestBlockStats)
-        maxConf, maxConfNodes := utils.MinFloat(mem.computeHealth())
-        log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
-        if jury.leader == nil || !containsLeader(maxConfNodes, jury.leader.name) {
-            if len(maxConfNodes) > 0 {
-                // no leader change if in exclusion zone.
-                if len(schedule) > 0 {
-                    futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.settings.TimeSettings.SlotDuration), schedule)
-                    if len(futureSchedule) > 0 {
-                        timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
-                        if timeToNextBlock < jury.settings.ExclusionZone {
-                            log.Warnf("[LEADER JURY] In exclusion zone before scheduled block.")
+        if len(viableNodeNames) > 0 {
+            maxConf, maxConfNodes := utils.MinFloat(mapWithViableLeaders(viableNodeNames, mem.computeHealth()))
+            log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
+            if maxConfNodes != nil && len(maxConfNodes) > 0 {
+                if jury.leader == nil || !containsLeader(maxConfNodes, jury.leader.name) {
+                    if len(maxConfNodes) > 0 {
+                        // no leader change if in exclusion zone.
+                        if len(schedule) > 0 {
+                            futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.settings.TimeSettings.SlotDuration), schedule)
+                            if len(futureSchedule) > 0 {
+                                timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
+                                if timeToNextBlock < jury.settings.ExclusionZone {
+                                    log.Warnf("[LEADER JURY] In exclusion zone before scheduled block.")
+                                    continue
+                                }
+                            }
+                        }
+                        // no leader change in exclusion zone before epoch turn over.
+                        if new(big.Int).Sub(jury.settings.TimeSettings.SlotsPerEpoch,
+                            currentSlotDate.GetSlot()).Cmp(jury.settings.PreEpochTurnOverExclusionSlots) <= 0 {
+                            log.Warnf("[LEADER JURY] In exclusion zone before epoch turn over, no leader change will be performed.")
                             continue
                         }
+                        // change leader.
+                        jury.changeLeader(randomSort(maxConfNodes)[0])
                     }
                 }
-                // no leader change in exclusion zone after epoch turn over.
-                if currentSlotDate.GetSlot().Cmp(jury.settings.EpochTurnOverExclusionSlots) <= 0 {
-                    log.Warnf("[LEADER JURY] In exclusion zone after epoch turn over, no leader change will be performed.")
-                    continue
-                }
-                // no leader change in exclusion zone before epoch turn over.
-                if new(big.Int).Sub(jury.settings.TimeSettings.SlotsPerEpoch,
-                    currentSlotDate.GetSlot()).Cmp(jury.settings.PreEpochTurnOverExclusionSlots) <= 0 {
-                    log.Warnf("[LEADER JURY] In exclusion zone before epoch turn over, no leader change will be performed.")
-                    continue
-                }
-                // change leader.
-                jury.changeLeader(randomSort(maxConfNodes)[0])
             }
         }
         if jury.leader != nil {

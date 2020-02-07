@@ -10,12 +10,16 @@ import (
     "time"
 )
 
+// utility function for getting the exact next epoch start.
 func nextEpochStart(slotDate *cardano.FullSlotDate, timeSettings cardano.TimeSettings) *cardano.FullSlotDate {
     epochDate, _ := cardano.FullSlotDateFrom(new(big.Int).Add(slotDate.GetEpoch(), new(big.Int).SetInt64(1)),
         new(big.Int).SetInt64(0), timeSettings)
     return epochDate
 }
 
+// this method promotes the given node to leader. should this attempt
+// fail, then it is retried all 5 slots until the epoch turn over has
+// been reached and another attempt would be useless.
 func promoteNode(node monitor.Node, cert api.LeaderCertificate, nextEpoch *cardano.FullSlotDate,
     settings cardano.TimeSettings) {
     _, err := node.API.PostLeader(cert)
@@ -29,6 +33,11 @@ func promoteNode(node monitor.Node, cert api.LeaderCertificate, nextEpoch *carda
     }
 }
 
+// this method is handling the turn over, all candidates are promoted
+// to leader 'PreEpochTurnOverExclusionSlots' number of slots before
+// turnover. However, if the last scheduled assignment is after this
+// time, then the promotion is shifted 500ms after the end of the slot,
+// in which the block shall be minted.
 func (jury *Jury) turnOverHandling() {
     for ; ; {
         currentSlotDate, _ := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
@@ -53,7 +62,9 @@ func (jury *Jury) turnOverHandling() {
         }
         // promote all nodes to leader
         for _, node := range jury.nodes {
-            go promoteNode(node, jury.cert, nextEpoch, *jury.settings.TimeSettings)
+            if jury.leader == nil || jury.leader.name != node.Name {
+                go promoteNode(node, jury.cert, nextEpoch, *jury.settings.TimeSettings)
+            }
         }
         waitTime = nextEpoch.GetEndDateTime().Add(2 * jury.settings.TimeSettings.SlotDuration).Sub(time.Now())
         if waitTime > 0 {
@@ -62,6 +73,6 @@ func (jury *Jury) turnOverHandling() {
         // do sanity check
         jury.sanityCheck()
         // waiting a bit for new turn over handling check.
-        time.Sleep(time.Duration(jury.settings.EpochTurnOverExclusionSlots.Int64()) * jury.settings.TimeSettings.SlotDuration)
+        time.Sleep(10 * time.Minute)
     }
 }
