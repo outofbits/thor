@@ -14,7 +14,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0-rc6"
+const ApplicationVersion string = "0.2.0-experimental"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -93,6 +93,11 @@ func main() {
                             if err != nil {
                                 log.Warnf("The pool tool update could not be started. %v", err.Error())
                             }
+                            // try to establish the prometheus client
+                            prometheus, err := config.ParsePrometheusConfig(nodeMonitor, conf)
+                            if err != nil {
+                                log.Warnf("The Prometheus client could not be started. %v", err.Error())
+                            }
                             // try to establish the leader jurry.
                             var leaderJurry *leader.Jury = nil
                             if timeSettings != nil {
@@ -112,6 +117,9 @@ func main() {
                             }
                             if leaderJurry != nil {
                                 go leaderJurry.Judge()
+                            }
+                            if prometheus != nil {
+                                go prometheus.Run()
                             }
                             nodeMonitor.Watch()
                         } else {
@@ -141,8 +149,6 @@ func parseActions(conf config.General) []monitor.Action {
     actions := make([]monitor.Action, 0)
     actions = append(actions, monitor.ShutDownWithBlockLagAction{})
     actions = append(actions, monitor.ShutDownWhenStuck{})
-    // parse pool tool action configuration
-
     // parse email action configuration.
     emailActionConfig, err := config.ParseEmailConfiguration(conf)
     if err == nil {
