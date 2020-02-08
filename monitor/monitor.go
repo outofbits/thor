@@ -12,6 +12,7 @@ import (
     "time"
 )
 
+//
 type NodeType string
 
 const (
@@ -91,32 +92,7 @@ func getTypeAbbreviation(t NodeType) string {
     }
 }
 
-type nodeStatisticResponse struct {
-    bootstrapping bool
-    nodeStats     *jor.NodeStatistic
-}
-
-func getNodeStatistics(input interface{}) threading.Response {
-    node := input.(Node)
-    nodeStats, bootstrapping, err := node.API.GetNodeStatistics()
-    if err != nil {
-        return threading.Response{
-            Context: node,
-            Error:   err,
-        }
-    } else {
-        return threading.Response{
-            Context: node,
-            Data: &nodeStatisticResponse{
-                bootstrapping: bootstrapping,
-                nodeStats:     nodeStats,
-            },
-        }
-    }
-}
-
-// a blocking call which is continuously watching
-// after the Jormungandr nodes.
+// a blocking call which is continuously watching after the Jormungandr nodes.
 func (nodeMonitor *NodeMonitor) Watch() {
     log.Infof("Starting to watch nodes.")
     for ; ; {
@@ -172,7 +148,8 @@ func (nodeMonitor *NodeMonitor) Watch() {
                     log.Infof("[%s][%s] --- bootstrapping ---", node.Name, getTypeAbbreviation(node.Type))
                 }
             } else {
-                log.Errorf("[%s][%s] Node statistics cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
+                log.Errorf("[%s][%s] Node statistics cannot be fetched (%v).", node.Name,
+                    getTypeAbbreviation(node.Type), response.Error.Error())
             }
         }
         // send block infos to leader jury
@@ -195,6 +172,31 @@ func (nodeMonitor *NodeMonitor) Watch() {
         diff := start.Add(nodeMonitor.behaviour.Interval).Sub(time.Now())
         if diff > 0 {
             time.Sleep(diff)
+        }
+    }
+}
+
+type nodeStatisticResponse struct {
+    bootstrapping bool
+    nodeStats     *jor.NodeStatistic
+}
+
+// gets the node statistics for the given n
+func getNodeStatistics(input interface{}) threading.Response {
+    node := input.(Node)
+    nodeStats, bootstrapping, err := node.API.GetNodeStatistics()
+    if err != nil {
+        return threading.Response{
+            Context: node,
+            Error:   err,
+        }
+    } else {
+        return threading.Response{
+            Context: node,
+            Data: &nodeStatisticResponse{
+                bootstrapping: bootstrapping,
+                nodeStats:     nodeStats,
+            },
         }
     }
 }

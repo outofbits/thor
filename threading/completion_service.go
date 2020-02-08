@@ -13,6 +13,11 @@ func perform(input interface{}, channel chan Response, function func(input inter
     channel <- function(input)
 }
 
+// a completion service takes a function and a list of inputs for this
+// function. It computes the function for all the given inputs in parallel and
+// returns the result of the computation in a list. The order of the response
+// list must not correspond with the list of inputs. The context field of the
+// response can be used to connect response with a certain input.
 func Complete(inputs []interface{}, function func(input interface{}) Response) []Response {
     response := make([]Response, len(inputs))
     channel := make(chan Response)
