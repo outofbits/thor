@@ -4,6 +4,7 @@ Thor is a tool for taming a swarm of Jörmungandr nodes. It provides at the mome
 
 * Monitoring
 * PoolTool Tip Updating
+* Prometheus
 * Email Reporting
 * Leader Election
 
@@ -18,23 +19,28 @@ API endpoint. In the following, a list of possible properties is listed with a d
 |---| ---- | ----- |
 | name | unique name of this peer | Yes |
 | api | location of the API endpoint as URL | Yes |
+| apiTimeout | the number of milliseconds to wait for an answer of the peer, per default it is 3s. | No |
 | type | specifies whether a peer is passive (i.e. "passive") or a leader candidate (i.e. "leader-candidate"). This property is only relevant for the leader election jury, the default is "passive". | No |
 | maxBlockLag | a property for the monitor that specifies how many blocks a peer can lag behind the maximum known block height before taking a certain action (e.g. shutdown, reporting, etc.)  | No |
 | maxTimeSinceLastBlock | a property for the monitor that specifies how many milliseconds the creation date of most recently received block can lie behind | No |
-|warmUpTime| a property that tells the monitor to execute no actions (e.g. shutdown) in the first specified number of milliseconds |No|
+| warmUpTime | a property that tells the monitor to execute no actions (e.g. shutdown) in the first specified number of milliseconds | No |
+
 
 Example:
 ```
 peers:
   - name: "Local 1"
     api: http://jormungandr-1:3101
-    maxTimeSinceLastBlock: 60000
+    maxTimeSinceLastBlock: 600000
+    warmUpTime: 600000
   - name: "Local 2"
     api: http://jormungandr-2:3101
     maxBlockLag: 10
+    warmUpTime: 600000
   - name: "Local 3"
     api: http://jormungandr-3:3101
-    maxTimeSinceLastBlock: 60000
+    maxTimeSinceLastBlock: 600000
+    warmUpTime: 600000
 ```
 
 ## Block Chain Settings
@@ -60,13 +66,51 @@ blockchain:
 
 ### Monitor
 
-A node is continuously compared to the latest block height reported by other nodes and if a node falls behind a 
-specified number `x` of blocks or the creation date of the most recent received block is `x` milliseconds behind,
-then the node is shutdown gracefully. It is expected that the node is restarted automatically on the system on which
-it is running (systemd, docker swarm, kubernetes, etc.).
+The monitor is fetching the node statistics of each specified peer periodically all `interval` milliseconds. Keep in mind
+that if you specify the block chain settings (see above), then the monitor is aware of the exact times of scheduled
+blocks and the monitor will not bother the peers around those times with API requests.
 
-Keep in mind, if you specify the block chain settings (see above), then the monitor is aware of the exact times of
-scheduled blocks and the monitor will not bother the peers at those times with API requests.
+| Name | Description |
+|------|------|
+| interval | specifies the interval in milliseconds for checking node statistics, per default 1 minute. |
+
+At the moment, two strategies can be followed (also in parallel) to detected a stuck/lagging peer. 
+
+In strategy (1), a peer is continuously compared to the latest block height reported by other peers and it is checked 
+whether a peer falls behind a specified number `maxBlockLag` of blocks. The disadvantage of this strategy is that if all
+peers are lagging behind the global block height, then this strategy would not react.
+
+In strategy (2), one looks at the creation date of the most recently received block and checks whether it was minted 
+further in the past than `maxTimeSinceLastBlock` milliseconds. One has to consider that gaps can be natural. 6 minutes 
+has to be shown a good line in the incentivized testnet. 
+
+The reaction to a detected stuck/lagging peer, is a graceful shutdown. It is expected that the node is restarted
+automatically on the system on which it is running (systemd, docker swarm, kubernetes, etc.). Moreover, a email 
+reporting can be activated as a reaction.
+
+Example:
+```
+blockchain:
+  genesisBlockHash: "8e4d2a343f3dcf9330ad9035b3e8d168e6728904262f2c434a4f8f934ec7b676"
+  genesisBlockTime: "2019-12-13T19:13:37+00:00"
+  slotsPerEpoch: 43200
+  slotDuration: 2000
+peers:
+  - name: "Local 1"
+    api: http://jormungandr-1:3101
+    maxTimeSinceLastBlock: 600000
+    warmUpTime: 600000
+  - name: "Local 2"
+    api: http://jormungandr-2:3101
+    maxBlockLag: 10
+    warmUpTime: 600000
+  - name: "Local 3"
+    api: http://jormungandr-3:3101
+    maxTimeSinceLastBlock: 600000
+    warmUpTime: 600000
+monitor:
+  interval: 1000
+```
 
 Logging output of the monitor (plus leader jury):
 
@@ -127,8 +171,8 @@ drifted away from the maximum reported block height in this window. More recent 
 the past. An exclusion zone can be specified such that no leader change can happen `exclusionZone` seconds in front of 
 a scheduled block. This mechanism shall prevent missed blocks as well as adversorial forks. 
 
-The epoch turn over is a challenging task with the current design of Jormungandr. In the new strategy since `2.0.0`, all
-leader candidates are promoted before an epoch turn over and demote all but the elected leader shortly after the turn 
+The epoch turn over is a challenging task with the current design of Jörmungandr. In the new strategy since `2.0.0`, all
+leader candidates are promoted before an epoch turn over and all but the elected leader are demoted shortly after the turn 
 over. The program will check whether all the leader candidates have computed the schedule correctly, and will exclude 
 non viable candidates from being elected until they have computed the schedule correctly. The last resort is a shutdown
 of the node (i.e. a restart).
