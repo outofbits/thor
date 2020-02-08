@@ -9,7 +9,8 @@ LABEL version="${THOR_VERSION}"
 LABEL description="Monitoring tool for a swarm of Jormungandr nodes."
 
 COPY . /go/src/github.com/sobitada/thor
-RUN cd /go/src/github.com/sobitada/thor && go get . && go build
-RUN chmod a+x /go/bin/thor
+RUN cd /go/src/github.com/sobitada/thor && go mod vendor
+RUN go build github.com/sobitada/thor
+RUN chmod a+x thor
 
-ENTRYPOINT ["/go/bin/thor"]
+ENTRYPOINT ["./thor"]

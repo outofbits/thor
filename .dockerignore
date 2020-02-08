@@ -7,3 +7,5 @@ LICENSE
 Makefile
 *.md
 build/
+Dockerfile
+vendor/
