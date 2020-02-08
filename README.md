@@ -9,7 +9,7 @@ Thor is a tool for taming a swarm of Jörmungandr nodes. It provides at the mome
 * Leader Election
 
 See the corresponding sections below to get detailed information. An demo orchestration with docker-compose can be found
-in the demo folder.
+in the demo folder. Docker images can be found on this [Dockerhub repository](https://hub.docker.com/repository/docker/adalove/thor).
 
 ## Peers
 This tool is centered around peers and a peer must be uniquely identified by a name.  A peer must moreover specify its
