@@ -12,8 +12,8 @@ See the corresponding sections below to get detailed information. An demo orches
 in the demo folder. Docker images can be found on this [Dockerhub repository](https://hub.docker.com/repository/docker/adalove/thor).
 
 ## Peers
-This tool is centered around peers and a peer must be uniquely identified by a name.  A peer must moreover specify its
-API endpoint. In the following, a list of possible properties is listed with a description.
+This tool is centered around Jörmungandr peers and such a peer must be uniquely identified by a name.  A peer must moreover
+specify its API endpoint. In the following, a list of possible properties is listed with a description.
 
 | Name | Description | Required |
 |---| ---- | ----- |
