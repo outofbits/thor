@@ -147,7 +147,7 @@ monitor:
   leaderJury:
     cert: node-secret.yaml
     window: 8
-    exclusionZone: 10
+    exclusionZone: 10000
 ```
 
 **Attention: This tool is not demoting nodes after bootstrap. Please make use of the [guardian](https://github.com/sobitada/guardian)
