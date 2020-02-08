@@ -7,10 +7,12 @@ Thor is a tool for taming a swarm of Jörmungandr nodes. It provides at the mome
 * Email Reporting
 * Leader Election
 
-See the corresponding sections below to get detailed information. An demo orchestration with docker-compose can be found in the demo folder.
+See the corresponding sections below to get detailed information. An demo orchestration with docker-compose can be found
+in the demo folder.
 
 ## Peers
-This tool is centered aorund peers and a peer must be uniquely identified by a name. The uniqueness condition is currently not enforced (in the sense of fail fast), but violating it can lead to unexpected behavior. A peer must moreover specify its API endpoint. In the following, a list of possible properties is listed with a description.
+This tool is centered around peers and a peer must be uniquely identified by a name.  A peer must moreover specify its
+API endpoint. In the following, a list of possible properties is listed with a description.
 
 | Name | Description | Required |
 |---| ---- | ----- |
@@ -58,15 +60,23 @@ blockchain:
 
 ### Monitor
 
-A node is continuously compared to the latest block height reported by other nodes and if a node falls behind a specified number `x` of blocks or the creation date of the most recent received block is `x` milliseconds behind, then the node is shutdown gracefully. It is expected that the node is restarted automatically on the system on which it is running (systemd, docker swarm, kubernetes, etc.).
+A node is continuously compared to the latest block height reported by other nodes and if a node falls behind a 
+specified number `x` of blocks or the creation date of the most recent received block is `x` milliseconds behind,
+then the node is shutdown gracefully. It is expected that the node is restarted automatically on the system on which
+it is running (systemd, docker swarm, kubernetes, etc.).
 
-...
+Keep in mind, if you specify the block chain settings (see above), then the monitor is aware of the exact times of
+scheduled blocks and the monitor will not bother the peers at those times with API requests.
 
-Keep in mind, if you specify the block chain settings (see above), then the monitor is aware of the exact times of scheduled blocks and the monitor will not bother the peers at those times with API requests.
+Logging output of the monitor (plus leader jury):
+
+![Monitor Logging Output](docs/images/monitor_stdout_logging.png)
 
 ### Pool Tool Tip Updater
 
-A user can optionally specify the required information listed below, and the tool is going to report the maxmimum height reported among the monitored peers to Pool Tool. The interval is hardcoded and is at the moment at 30 seconds, i.e. twice a minute. Keep in mind, that you have specify the block chain settings (see above) to use this function.
+A user can optionally specify the required information listed below, and the tool is going to report the maxmimum height
+reported among the monitored peers to Pool Tool. The interval is hardcoded and is at the moment at 30 seconds,
+i.e. twice a minute. Keep in mind, that you have specify the block chain settings (see above) to use this function.
 
 | Name | Description |
 |---|---|
@@ -80,10 +90,48 @@ pooltool:
   poolID: 28099aba9ea7c89cdb2a44a4c6640e4137e1939bd75451202c67dd384814dfc9
 ```
 
-## Leader Jury
-The aim of the leader jury is to select the healthiest node among the peers specified as "leader-candidate" for minting the next scheduled block. It keeps a record of the `window` most recent fetched node statistics (from the monitor) for each node and assesses the health for each leader. The health of a node is specified at the moment by how little it drifted away from the maximum reported block height in this window. More recent drifts are weighted more than drifts of the past. An exclusion zone can be specified such that no leader change can happen `exclusion_zone` seconds in front of a scheduled block. This mechanism shall prevent missed blocks as well as adversorial forks. 
+## Prometheus
 
-The epoch turn over is a challenging task with the current design of Jormungandr. The current strategy is to stick for `turnover_exclusion_zone` seconds to the current leader and to shut down all the non leader nodes one after another (not all at once). This strategy can lead to missed block, if the leader fails. However, a missed block is better than creating an  adversorial fork and being publicly shamed.
+This tool can be turned into a Prometheus client (i.e. it can be added as a target to a job). What is needed, is
+the `hostname` and `port` on which the client shall be started.
+
+Example:
+```
+prometheus:
+  hostname: "0.0.0.0"
+  port: "9200"
+```
+
+The provided metrics are listed in the table below.
+
+| Name | Description |
+|---|----|
+| thor_jormungandr_last_block_height | The latest block height reported by this Jörmungandr node. |
+| thor_jormungandr_tx_received_count | The number of transaction received by this Jörmungandr node. |
+| thor_jormungandr_peer_available_count | The number of peers available to this Jörmungandr node. |
+| thor_jormungandr_peer_quarantined_count | The number of peers quarantined to this Jörmungandr node. |
+| thor_jormungandr_peer_unreachable_count | The number of peers unreachable to this Jörmungandr node. |
+| thor_jormungandr_uptime | The uptime reported by this Jörmungandr node. |
+
+
+
+Grafana visualization of a subset of the provided metrics:
+
+![Grafana Visualization](docs/images/grafana_screenshot.png)
+
+## Leader Jury
+The aim of the leader jury is to select the healthiest node among the peers specified as "leader-candidate" for minting
+the next scheduled block. It keeps a record of the `window` most recent fetched node statistics (from the monitor) for 
+each node and assesses the health for each leader. The health of a node is specified at the moment by how little it 
+drifted away from the maximum reported block height in this window. More recent drifts are weighted more than drifts of 
+the past. An exclusion zone can be specified such that no leader change can happen `exclusionZone` seconds in front of 
+a scheduled block. This mechanism shall prevent missed blocks as well as adversorial forks. 
+
+The epoch turn over is a challenging task with the current design of Jormungandr. In the new strategy since `2.0.0`, all
+leader candidates are promoted before an epoch turn over and demote all but the elected leader shortly after the turn 
+over. The program will check whether all the leader candidates have computed the schedule correctly, and will exclude 
+non viable candidates from being elected until they have computed the schedule correctly. The last resort is a shutdown
+of the node (i.e. a restart).
 
 Keep in mind, that you have specify the block chain settings (see above) to use this function.
 
@@ -91,19 +139,20 @@ Keep in mind, that you have specify the block chain settings (see above) to use 
 |---|---| ---- |
 | cert | path to the  node-secret YAML configuration file | -no default- |
 | window | number of checkpoints (occur in the frequency of `interval`ms) that shall be considered for the health metric | 5 |
-| exclusion_zone | number of seconds in front of a sheduled block in which no leader change is allowed | 10 |
-| turnover_exclusion_zone | number of seconds after a turn over in which no leader change is allowed | 600 |
+| exclusionZone | number of milliseconds in front of a scheduled block in which no leader change is allowed | 30s |
 
 ```
 monitor:
   interval: 1000
-  leader_jury:
+  leaderJury:
     cert: node-secret.yaml
     window: 8
-    exclusion_zone: 10
+    exclusionZone: 10
 ```
 
-**Attention: This tool is not demoting nodes after boostrap. Please make use of the [guardian](https://github.com/sobitada/guardian) for this. The guardian shall be executed side-by-side to a Jörmungandr node. It will monitor the bootstrap and immediately demote the node after bootstrap.**
+**Attention: This tool is not demoting nodes after bootstrap. Please make use of the [guardian](https://github.com/sobitada/guardian)
+for this. The guardian shall be executed side-by-side to a Jörmungandr node. It will monitor the bootstrap and
+immediately demote the node after bootstrap.**
 
 Example script using the guardian:
 ```
@@ -144,10 +193,13 @@ peers:
     maxTimeSinceLastBlock: 60000
 monitor:
   interval: 1000
+prometheus:
+  hostname: "0.0.0.0"
+  port: "9200"
 ```
 
-You should have a setup of your jormungandr node in which it automitically restarts after a shut down (e.g. systemd, docker compose/swarm, kubernetes). This is expected by this tool.
-
+You should have a setup of your jormungandr node in which it automitically restarts after a shut down (e.g. systemd,
+docker compose/swarm, kubernetes). This is expected by this tool.
 
 ## Build
 You need to have the Go language installed on your machine; instructions are [here](https://golang.org/doc/install#install). Then
@@ -157,17 +209,13 @@ you have to fetch the source code of this repository, which can be done with the
 go get github.com/sobitada/thor
 ```
 
-Then you must switch to your GO home (often located in your home directory per default) and go to the
-fetched source code. There you can build this program with the following two steps. First all used libraries
-are fetched and then the build process is started.
+Then you can build this program with the following step.
+
 ```
-go get .
-```
-```
-go build
+go build github.com/sobitada/thor
 ```
 
-Afterwards you should see an executable named `thor` for your OS and architecture.
+Afterwards you should see an executable named `thor` for your OS and architecture in the current working directory.
 
 ## Feedback
 
