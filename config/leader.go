@@ -14,7 +14,6 @@ type LeaderConfig struct {
     CertPath                    string `yaml:"cert"`
     Window                      int    `yaml:"window"`
     ExclusionZoneInS            uint32 `yaml:"exclusionZone"`
-    TurnOverExclusionZoneInS    uint32 `yaml:"turnoverExclusionZone"`
     PreTurnOverExclusionZoneInS uint32 `yaml:"preTurnoverExclusionZone"`
 }
 
@@ -42,14 +41,6 @@ func GetLeaderJury(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *mon
                         } else {
                             exclusionZone = time.Duration(int64(leaderConfig.ExclusionZoneInS)) * time.Second
                         }
-                        // epoch turn over exclusion zone for leader change.
-                        var turnOverExclusionSlots *big.Int
-                        var turnOverExclusionInS uint32 = 600
-                        if leaderConfig.TurnOverExclusionZoneInS > 0 {
-                            turnOverExclusionInS = leaderConfig.TurnOverExclusionZoneInS
-                        }
-                        turnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(turnOverExclusionInS))*time.Second)),
-                            new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
                         // pre epoch turn over exclusion zone for leader change.
                         var preTurnOverExclusionSlots *big.Int
                         var preTurnOverExclusionInS uint32 = 60
@@ -58,11 +49,9 @@ func GetLeaderJury(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *mon
                         }
                         preTurnOverExclusionSlots = new(big.Int).Div(new(big.Int).SetInt64(int64(time.Duration(int64(preTurnOverExclusionInS))*time.Second)),
                             new(big.Int).SetInt64(int64(timeSettings.SlotDuration)))
-
                         return leader.GetLeaderJuryFor(nodes, mon, watchDog, leaderCert, leader.JurySettings{
                             Window:                         window,
                             ExclusionZone:                  exclusionZone,
-                            EpochTurnOverExclusionSlots:    turnOverExclusionSlots,
                             PreEpochTurnOverExclusionSlots: preTurnOverExclusionSlots,
                             TimeSettings:                   timeSettings,
                         })
