@@ -13,7 +13,7 @@ import (
 type LeaderConfig struct {
     CertPath                    string `yaml:"cert"`
     Window                      int    `yaml:"window"`
-    ExclusionZoneInS            uint32 `yaml:"exclusionZone"`
+    ExclusionZoneInMs           uint32 `yaml:"exclusionZone"`
     PreTurnOverExclusionZoneInS uint32 `yaml:"preTurnoverExclusionZone"`
 }
 
@@ -36,10 +36,10 @@ func GetLeaderJury(nodes []monitor.Node, mon *monitor.NodeMonitor, watchDog *mon
                         }
                         // exclusion zone for leader change.
                         var exclusionZone time.Duration
-                        if leaderConfig.ExclusionZoneInS == 0 {
+                        if leaderConfig.ExclusionZoneInMs == 0 {
                             exclusionZone = 30 * time.Second
                         } else {
-                            exclusionZone = time.Duration(int64(leaderConfig.ExclusionZoneInS)) * time.Second
+                            exclusionZone = time.Duration(int64(leaderConfig.ExclusionZoneInMs)) * time.Millisecond
                         }
                         // pre epoch turn over exclusion zone for leader change.
                         var preTurnOverExclusionSlots *big.Int
