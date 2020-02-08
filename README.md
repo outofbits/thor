@@ -90,7 +90,7 @@ pooltool:
   poolID: 28099aba9ea7c89cdb2a44a4c6640e4137e1939bd75451202c67dd384814dfc9
 ```
 
-## Prometheus
+### Prometheus
 
 This tool can be turned into a Prometheus client (i.e. it can be added as a target to a job). What is needed, is
 the `hostname` and `port` on which the client shall be started.
