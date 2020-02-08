@@ -4,7 +4,7 @@ Thor is a tool for taming a swarm of Jörmungandr nodes. It provides at the mome
 
 * Monitoring
 * PoolTool Tip Updating
-* Prometheus
+* Prometheus Client
 * Email Reporting
 * Leader Election
 
@@ -177,7 +177,7 @@ over. The program will check whether all the leader candidates have computed the
 non viable candidates from being elected until they have computed the schedule correctly. The last resort is a shutdown
 of the node (i.e. a restart).
 
-Keep in mind, that you have specify the block chain settings (see above) to use this function.
+Keep in mind, that you have to specify the block chain settings (see above) to use this function.
 
 | Name | Description | Default |
 |---|---| ---- |
