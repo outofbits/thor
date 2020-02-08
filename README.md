@@ -217,6 +217,13 @@ go build github.com/sobitada/thor
 
 Afterwards you should see an executable named `thor` for your OS and architecture in the current working directory.
 
+## Alternatives
+In this section, we want to list other tools that try to do similar things.
+
+* [JorManager](https://bitbucket.org/muamw10/jormanager/src/develop/) - BCSH (Andrew Westberg)
+* [Cardano Sentinel](https://organicdesign.nz/Our_Cardano_Sentinel) - PUDIM (Aran)
+
+
 ## Feedback
 
 If you have any suggestions, feel free to open an issue or submit a pull request.
