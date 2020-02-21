@@ -4,8 +4,37 @@ import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/thor/monitor"
+    "github.com/sobitada/thor/threading"
     "time"
 )
+
+type NodeMode int
+
+const (
+    Demoted NodeMode = iota
+    Promoted
+)
+
+type sanityInput struct {
+    mode NodeMode
+    jury *Jury
+    node monitor.Node
+}
+
+func performSanityCheck(input interface{}) threading.Response {
+    sInput := input.(sanityInput)
+    log.Infof("[LEADER JURY] Sanity check node %v.", sInput.node.Name)
+    if sInput.mode == Promoted {
+        sInput.jury.sanityCheckLeaderNode(sInput.node)
+    } else {
+        sInput.jury.sanityCheckPassiveNode(sInput.node)
+    }
+    return threading.Response{
+        Context: input,
+        Data:    nil,
+        Error:   nil,
+    }
+}
 
 // sanity check tries to correct fail overs and potential flaws in this
 // program as well as in Jormungandr. It checks whether only one node is
@@ -32,14 +61,17 @@ func (jury *Jury) startSanityChecks() {
                 log.Infof("[LEADER JURY] Sanity check before assignment %v.", nextAssignments[i].ScheduleTime)
                 // do sanity checking
                 jury.leaderMutex.Lock()
+                i := 0
+                inputs := make([]interface{}, len(jury.nodes))
                 for name, node := range jury.nodes {
-                    log.Infof("[LEADER JURY] Sanity check node %v.", name)
                     if jury.leader != nil && jury.leader.name == name {
-                        jury.sanityCheckLeaderNode(node)
+                        inputs[i] = sanityInput{node: node, mode: Promoted, jury: jury}
                     } else {
-                        jury.sanityCheckPassiveNode(node)
+                        inputs[i] = sanityInput{node: node, mode: Demoted, jury: jury}
                     }
+                    i++
                 }
+                threading.Complete(inputs, performSanityCheck)
                 jury.leaderMutex.Unlock()
             }
         }
