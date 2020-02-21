@@ -112,7 +112,7 @@ func (nodeMonitor *NodeMonitor) Watch() {
                         continue
                     }
                 } else {
-                    log.Infof("[SCHEDULE] No leader assignments ahead.", len(futureSchedule))
+                    log.Infof("[SCHEDULE] No leader assignments ahead.")
                 }
             }
         }
