@@ -5,6 +5,7 @@ import (
     "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/thor/monitor"
     "github.com/sobitada/thor/threading"
+    "github.com/sobitada/thor/utils"
     "time"
 )
 
@@ -56,7 +57,8 @@ func (jury *Jury) startSanityChecks() {
         for i := 0; i < len(nextAssignments); i++ {
             waitDuration := nextAssignments[i].ScheduleTime.Sub(time.Now()) - 1*time.Minute
             if waitDuration > 0 { // no sanity check between slots that are too close to each other.
-                log.Infof("[LEADER JURY][SANITY CHECK] Waiting %v for the next sanity check.", waitDuration.String())
+                log.Infof("[LEADER JURY][SANITY CHECK] Waiting %v for the next sanity check.",
+                    utils.GetHumanReadableUpTime(waitDuration))
                 time.Sleep(waitDuration)
                 log.Infof("[LEADER JURY][SANITY CHECK] Check for assignment %v.", nextAssignments[i].ScheduleTime)
                 // do sanity checking
