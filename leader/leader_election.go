@@ -162,7 +162,6 @@ func (jury *Jury) Judge() {
         if !found || schedule == nil {
             schedule = []api.LeaderAssignment{}
         }
-        log.Debugf("[LEADER JURY] Number of leader assignments: %v", len(schedule))
         // check health
         viableNodeNames := jury.watchDog.GetViableLeaderNodes()
         log.Infof("[LEADER JURY] Viable Nodes are [%v].", strings.Join(viableNodeNames, ","))

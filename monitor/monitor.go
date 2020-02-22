@@ -102,17 +102,20 @@ func (nodeMonitor *NodeMonitor) Watch() {
             currentSlotDate, _ := nodeMonitor.timeSettings.GetSlotDateFor(time.Now())
             schedule, found := nodeMonitor.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
             if found {
-                futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
-                if len(futureSchedule) > 0 {
-                    log.Infof("[SCHEDULE] Number of leader assignments ahead: %v", len(futureSchedule))
-                    log.Infof("[SCHEDULE] Next leader assignments at %v", futureSchedule[0].ScheduleTime.String())
-                    timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
-                    if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
-                        time.Sleep(nodeMonitor.behaviour.Interval)
-                        continue
+                if len(schedule) > 0 {
+                    log.Infof("[SCHEDULE] ")
+                    futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
+                    if len(futureSchedule) > 0 {
+                        log.Infof("[SCHEDULE] Number of leader assignments ahead: %v", len(futureSchedule))
+                        log.Infof("[SCHEDULE] Next leader assignments at %v", futureSchedule[0].ScheduleTime.String())
+                        timeToNextBlock := futureSchedule[0].ScheduleTime.Sub(time.Now())
+                        if timeToNextBlock < 10*nodeMonitor.timeSettings.SlotDuration {
+                            time.Sleep(nodeMonitor.behaviour.Interval)
+                            continue
+                        }
+                    } else {
+                        log.Infof("[SCHEDULE] No leader assignments ahead.")
                     }
-                } else {
-                    log.Infof("[SCHEDULE] No leader assignments ahead.")
                 }
             }
         }
@@ -136,7 +139,7 @@ func (nodeMonitor *NodeMonitor) Watch() {
                 if !statsResponse.bootstrapping {
                     if statsResponse.nodeStats != nil {
                         lastBlockMap[node.Name] = *statsResponse.nodeStats
-                        log.Infof("[%s][%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name,
+                        log.Infof("[MONITOR][%s][%s] Block Height: <%v>, Date: <%v>, Hash: <%v>, UpTime: <%v>", node.Name,
                             getTypeAbbreviation(node.Type), statsResponse.nodeStats.LastBlockHeight.String(),
                             statsResponse.nodeStats.LastBlockDate.String(),
                             statsResponse.nodeStats.LastBlockHash[:8],
@@ -144,14 +147,15 @@ func (nodeMonitor *NodeMonitor) Watch() {
                         )
                         blockHeightMap[node.Name] = statsResponse.nodeStats.LastBlockHeight
                     } else {
-                        log.Errorf("[%s][%s] Node statistics cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
+                        log.Errorf("[MONITOR][%s][%s] Node statistics cannot be fetched.", node.Name, getTypeAbbreviation(node.Type))
                     }
                 } else {
-                    log.Infof("[%s][%s] --- bootstrapping ---", node.Name, getTypeAbbreviation(node.Type))
+                    log.Infof("[MONITOR][%s][%s] --- bootstrapping ---", node.Name, getTypeAbbreviation(node.Type))
                 }
             } else {
-                log.Errorf("[%s][%s] Node statistics cannot be fetched (%v).", node.Name,
-                    getTypeAbbreviation(node.Type), response.Error.Error())
+                log.Infof("[MONITOR][%s][%s] Node statistics cannot be fetched.", node.Name,
+                    getTypeAbbreviation(node.Type))
+                log.Errorf("[MONITOR][%s][%s] Error: %v", response.Error.Error())
             }
         }
         // send block infos to leader jury
