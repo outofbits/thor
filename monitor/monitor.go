@@ -103,7 +103,8 @@ func (nodeMonitor *NodeMonitor) Watch() {
             schedule, found := nodeMonitor.watchDog.GetScheduleFor(currentSlotDate.GetEpoch())
             if found {
                 if len(schedule) > 0 {
-                    log.Infof("[SCHEDULE] ")
+                    log.Infof("[SCHEDULE] %v leader assignments for epoch %v.", len(schedule),
+                        currentSlotDate.GetEpoch().String())
                     futureSchedule := jor.FilterLeaderLogsBefore(time.Now().Add(-2*nodeMonitor.timeSettings.SlotDuration), schedule)
                     if len(futureSchedule) > 0 {
                         log.Infof("[SCHEDULE] Number of leader assignments ahead: %v", len(futureSchedule))
