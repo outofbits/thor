@@ -105,7 +105,7 @@ func (jury *Jury) sanityCheckPassiveNode(node monitor.Node) {
                 demoteLeader(node, leaderIDs[i], 3)
             }
         } else {
-            log.Infof("[LEADER JURY][SANITY CHECK][%v] OK.")
+            log.Infof("[LEADER JURY][SANITY CHECK][%v] OK.", node.Name)
         }
     }
 }
