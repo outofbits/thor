@@ -3,7 +3,6 @@ module github.com/sobitada/thor
 go 1.13
 
 require (
-	github.com/gemnasium/logrus-graylog-hook v2.0.7+incompatible
 	github.com/hako/durafmt v0.0.0-20191009132224-3f39dc1ed9f4
 	github.com/prometheus/client_golang v1.4.0
 	github.com/sirupsen/logrus v1.4.2
