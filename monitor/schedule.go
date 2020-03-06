@@ -83,30 +83,35 @@ func nextEpochStart(slotDate *cardano.FullSlotDate, timeSettings cardano.TimeSet
 }
 
 func (watchDog *ScheduleWatchDog) checkViability(node Node, epoch *big.Int, schedule []api.LeaderAssignment) {
-    for ; ; {
-        currentSlotDate, _ := watchDog.timeSettings.GetSlotDateFor(time.Now())
-        if currentSlotDate.GetEpoch().Cmp(epoch) == 0 {
-            break
-        }
-        newSchedule, err := node.API.GetLeadersSchedule()
-        if err == nil {
-            if schedule != nil && len(schedule) > 0 {
-                if len(schedule) == len(newSchedule) {
-                    watchDog.viableLeaderNodes.mutex.Lock()
-                    watchDog.viableLeaderNodes.epochMap[epoch.String()] = append(watchDog.viableLeaderNodes.epochMap[epoch.String()], node.Name)
-                    watchDog.viableLeaderNodes.mutex.Unlock()
-                    break
+    if schedule != nil && len(schedule) > 0 {
+        for ; ; {
+            currentSlotDate, _ := watchDog.timeSettings.GetSlotDateFor(time.Now())
+            if currentSlotDate.GetEpoch().Cmp(epoch) == 0 {
+                break
+            }
+            newSchedule, err := node.API.GetLeadersSchedule()
+            if err == nil {
+                if newSchedule != nil && len(newSchedule) > 0 {
+                    testTime := time.Now()
+                    expectedSchedule := api.FilterLeaderLogsBefore(testTime, schedule)
+                    newSchedule = api.FilterLeaderLogsBefore(testTime, newSchedule)
+                    if len(expectedSchedule) == len(newSchedule) {
+                        watchDog.viableLeaderNodes.mutex.Lock()
+                        watchDog.viableLeaderNodes.epochMap[epoch.String()] = append(watchDog.viableLeaderNodes.epochMap[epoch.String()], node.Name)
+                        watchDog.viableLeaderNodes.mutex.Unlock()
+                        break
+                    } else {
+                        log.Warnf("[SCHEDULE] The leader schedule of node %v is of different length. Expected %v, but was %v.",
+                            node.Name, len(newSchedule), len(schedule))
+                    }
                 } else {
-                    log.Warnf("[SCHEDULE] The leader schedule of node %v is of different length. Expected %v, but was %v.",
-                        node.Name, len(newSchedule), len(schedule))
+                    log.Warnf("[SCHEDULE] Could not fetch schedule from %v.", node.Name)
                 }
             } else {
-                log.Warnf("[SCHEDULE] Could not fetch schedule from %v.", node.Name)
+                log.Warnf("[SCHEDULE] Could not fetch schedule from %v. %v", node.Name, err.Error())
             }
-        } else {
-            log.Warnf("[SCHEDULE] Could not fetch schedule from %v. %v", node.Name, err.Error())
+            time.Sleep(10 * time.Minute)
         }
-        time.Sleep(10 * time.Minute)
     }
 }
 
@@ -198,7 +203,10 @@ func (watchDog *ScheduleWatchDog) Watch() {
                             newSchedule = schedule
                             viableLeaderNodes = append(viableLeaderNodes, node.Name)
                         } else {
-                            if len(schedule) == len(newSchedule) {
+                            testTime := time.Now()
+                            expectedSchedule := api.FilterLeaderLogsBefore(testTime, schedule)
+                            newSchedule = api.FilterLeaderLogsBefore(testTime, newSchedule)
+                            if len(expectedSchedule) == len(newSchedule) {
                                 viableLeaderNodes = append(viableLeaderNodes, node.Name)
                             } else {
                                 log.Warnf("[SCHEDULE] The leader schedule of node %v is of different length. Expected %v, but was %v.",

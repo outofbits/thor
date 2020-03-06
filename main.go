@@ -14,7 +14,8 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.0"
+const ApplicationVersion string = "0.2.1"
+
 
 func printUsage() {
     fmt.Printf(`Usage:

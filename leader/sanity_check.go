@@ -4,8 +4,38 @@ import (
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-jormungandr/api"
     "github.com/sobitada/thor/monitor"
+    "github.com/sobitada/thor/threading"
+    "github.com/sobitada/thor/utils"
     "time"
 )
+
+type NodeMode int
+
+const (
+    Demoted NodeMode = iota
+    Promoted
+)
+
+type sanityInput struct {
+    mode NodeMode
+    jury *Jury
+    node monitor.Node
+}
+
+func performSanityCheck(input interface{}) threading.Response {
+    sInput := input.(sanityInput)
+    log.Debugf("[LEADER JURY][SANITY CHECK] Start for node %v.", sInput.node.Name)
+    if sInput.mode == Promoted {
+        sInput.jury.sanityCheckLeaderNode(sInput.node)
+    } else {
+        sInput.jury.sanityCheckPassiveNode(sInput.node)
+    }
+    return threading.Response{
+        Context: input,
+        Data:    nil,
+        Error:   nil,
+    }
+}
 
 // sanity check tries to correct fail overs and potential flaws in this
 // program as well as in Jormungandr. It checks whether only one node is
@@ -17,29 +47,33 @@ func (jury *Jury) startSanityChecks() {
         assignments := <-jury.scheduleChannel
         currentSlotDate, err := jury.settings.TimeSettings.GetSlotDateFor(time.Now())
         if err != nil {
-            log.Fatalf("[LEADER JURY] Sanity check loop panicked: %v", err.Error())
+            log.Fatalf("[LEADER JURY][SANITY CHECK] Loop panicked: %v", err.Error())
             time.Sleep(30 * time.Minute)
             continue
         }
         nextAssignments := api.FilterLeaderLogsBefore(time.Now().Add(2*time.Minute),
             api.SortLeaderLogsByScheduleTime(api.GetLeaderLogsInEpoch(currentSlotDate.GetEpoch(), assignments)))
-        log.Debugf("[LEADER JURY] Started sanity check for %v assignments ahead. ", len(nextAssignments))
+        log.Debugf("[LEADER JURY][SANITY CHECK] Started sanity check for %v assignments ahead. ", len(nextAssignments))
         for i := 0; i < len(nextAssignments); i++ {
             waitDuration := nextAssignments[i].ScheduleTime.Sub(time.Now()) - 1*time.Minute
             if waitDuration > 0 { // no sanity check between slots that are too close to each other.
-                log.Infof("[LEADER JURY] Waiting %v for the next sanity check.", waitDuration.String())
+                log.Infof("[LEADER JURY][SANITY CHECK] Waiting %v for the next sanity check.",
+                    utils.GetHumanReadableUpTime(waitDuration))
                 time.Sleep(waitDuration)
-                log.Infof("[LEADER JURY] Sanity check before assignment %v.", nextAssignments[i].ScheduleTime)
+                log.Infof("[LEADER JURY][SANITY CHECK] Check for assignment %v.", nextAssignments[i].ScheduleTime)
                 // do sanity checking
                 jury.leaderMutex.Lock()
+                i := 0
+                inputs := make([]interface{}, len(jury.nodes))
                 for name, node := range jury.nodes {
-                    log.Infof("[LEADER JURY] Sanity check node %v.", name)
                     if jury.leader != nil && jury.leader.name == name {
-                        jury.sanityCheckLeaderNode(node)
+                        inputs[i] = sanityInput{node: node, mode: Promoted, jury: jury}
                     } else {
-                        jury.sanityCheckPassiveNode(node)
+                        inputs[i] = sanityInput{node: node, mode: Demoted, jury: jury}
                     }
+                    i++
                 }
+                threading.Complete(inputs, performSanityCheck)
                 jury.leaderMutex.Unlock()
             }
         }
@@ -51,7 +85,6 @@ func (jury *Jury) startSanityChecks() {
 func (jury *Jury) sanityCheck() {
     jury.leaderMutex.Lock()
     for name, node := range jury.nodes {
-        log.Infof("[LEADER JURY] Sanity check node %v.", name)
         if jury.leader != nil && jury.leader.name == name {
             jury.sanityCheckLeaderNode(node)
         } else {
@@ -67,10 +100,12 @@ func (jury *Jury) sanityCheckPassiveNode(node monitor.Node) {
     leaderIDs, err := node.API.GetRegisteredLeaders()
     if err == nil {
         if len(leaderIDs) > 0 {
-            log.Warnf("[LEADER JURY] Node %v is in leader mode while jury promoted other node.", node.Name)
+            log.Warnf("[LEADER JURY][SANITY CHECK][%v] In leader mode while jury promoted other node.", node.Name)
             for i := range leaderIDs {
                 demoteLeader(node, leaderIDs[i], 3)
             }
+        } else {
+            log.Infof("[LEADER JURY][SANITY CHECK][%v] OK.", node.Name)
         }
     }
 }
@@ -83,18 +118,19 @@ func (jury *Jury) sanityCheckLeaderNode(node monitor.Node) {
     if err == nil {
         leaderIDNumber := len(leaderIDs)
         if leaderIDNumber == 0 {
-            log.Warnf("[LEADER JURY] Node %v is not promoted to leader node as expected.", node.Name)
+            log.Warnf("[LEADER JURY][SANITY CHECK][%v] Is not promoted to leader node as expected.", node.Name)
             leaderID, err := node.API.PostLeader(jury.cert)
             if err == nil {
                 jury.leader = &currentLeader{name: node.Name, leaderID: leaderID}
                 log.Infof("[LEADER JURY] Node %v is elected and has ID=%v", node.Name, leaderID)
+                log.Infof("[LEADER JURY][SANITY CHECK][%v] OK.", node.Name)
             } else {
-                log.Errorf("[LEADER JURY] Could not change to leader %v. %v", node.Name, err.Error())
+                log.Errorf("[LEADER JURY][SANITY CHECK][%v] Could not change to leader. %v", node.Name, err.Error())
             }
         } else if leaderIDNumber == 1 {
-            log.Infof("[LEADER JURY] Node %v is leader as expected.", node.Name)
+            log.Infof("[LEADER JURY][SANITY CHECK][%v] OK.", node.Name)
         } else {
-            log.Warnf("[LEADER JURY] Node %v has more than one leader registered (%v).", node.Name, leaderIDNumber)
+            log.Warnf("[LEADER JURY][SANITY CHECK][%v] Has more than one leader registered (%v).", node.Name, leaderIDNumber)
             for i := range leaderIDs {
                 if leaderIDs[i] != jury.leader.leaderID {
                     demoteLeader(node, leaderIDs[i], 3)
