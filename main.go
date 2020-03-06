@@ -16,7 +16,6 @@ import (
 const ApplicationName string = "thor"
 const ApplicationVersion string = "0.2.1"
 
-
 func printUsage() {
     fmt.Printf(`Usage:
   %v <config> or %v [-help | -version]
@@ -88,7 +87,7 @@ func main() {
                             }
                             // try to establish the monitor.
                             nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
-                                parseActions(conf), watchdog, timeSettings)
+                                parseActions(), watchdog, timeSettings)
                             // try to establish the pool tool updater.
                             poolTool, err := config.ParsePoolToolConfig(nodeMonitor, conf)
                             if err != nil {
@@ -146,20 +145,9 @@ func main() {
     }
 }
 
-func parseActions(conf config.General) []monitor.Action {
+func parseActions() []monitor.Action {
     actions := make([]monitor.Action, 0)
     actions = append(actions, monitor.ShutDownWithBlockLagAction{})
     actions = append(actions, monitor.ShutDownWhenStuck{})
-    // parse email action configuration.
-    emailActionConfig, err := config.ParseEmailConfiguration(conf)
-    if err == nil {
-        if emailActionConfig != nil {
-            actions = append(actions, monitor.ReportBlockLagPerEmailAction{Config: *emailActionConfig})
-            actions = append(actions, monitor.ReportStuckPerEmailAction{Config: *emailActionConfig})
-        }
-    } else {
-        fmt.Print(err.Error())
-        os.Exit(1)
-    }
     return actions
 }

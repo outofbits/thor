@@ -10,7 +10,6 @@ type General struct {
     Monitor    Monitor             `yaml:"monitor"`
     PoolTool   *PoolTool           `yaml:"pooltool"`
     Prometheus *Prometheus         `yaml:"prometheus"`
-    Email      *Email              `yaml:"email"`
 }
 
 type ConfigurationError struct {

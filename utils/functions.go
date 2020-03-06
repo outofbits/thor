@@ -24,7 +24,10 @@ func MaxInt(blockHeightMap map[string]*big.Int) (*big.Int, []string) {
     return maxV, peers
 }
 
-//
+// scans the map of peers with their reported healthiness value, and
+// then returns the highest reported block height as well as a
+// list of peers (more specifically their name) that reported
+// exactly this height.
 func MinFloat(floatMap map[string]*big.Float) (*big.Float, []string) {
     minV := new(big.Float).SetInf(false)
     minConfMap := make(map[string][]string)
