@@ -190,7 +190,8 @@ func (jury *Jury) Judge() {
                             continue
                         }
                         // change leader.
-                        jury.changeLeader(randomSort(maxConfNodes)[0])
+                        _, bestLeaderCandidate := utils.MaxInt(mapUpTime(maxConfNodes, latestBlockStats))
+                        jury.changeLeader(randomSort(bestLeaderCandidate)[0])
                     }
                 }
             }
@@ -199,6 +200,16 @@ func (jury *Jury) Judge() {
             log.Infof("[LEADER JURY] Current Leader is %v.", jury.leader.name)
         }
     }
+}
+
+func mapUpTime(nodeNames []string, latestBlockStats map[string]api.NodeStatistic) map[string]*big.Int {
+    uptimeMap := make(map[string]*big.Int)
+    for n := range nodeNames {
+        name := nodeNames[n]
+        val, _ := new(big.Float).SetFloat64(latestBlockStats[name].UpTime.Seconds()).Int(nil)
+        uptimeMap[name] = val
+    }
+    return uptimeMap
 }
 
 // returns a randomly sorted list of nodes.
