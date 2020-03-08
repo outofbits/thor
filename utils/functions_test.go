@@ -24,12 +24,23 @@ func TestMaxInt_FullMap_mustReturnMaxValueAndCorrectKeys(t *testing.T) {
     }
 }
 
+func TestMaxInt_SingletonMap_mustReturnMaxValueAndCorrectKeys(t *testing.T) {
+    input := map[string]*big.Int{
+        "a": new(big.Int).SetUint64(2),
+    }
+    maxVal, keys := MaxInt(input)
+    if assert.NotNil(t, maxVal) {
+        assert.Equal(t, uint64(2), maxVal.Uint64())
+    }
+    if assert.NotNil(t, keys) {
+        assert.ElementsMatch(t, []string{"a"}, keys)
+    }
+}
+
 func TestMaxInt_EmptyMap_mustReturnNilAndEmptyList(t *testing.T) {
     maxVal, keys := MaxInt(map[string]*big.Int{})
     assert.Nil(t, maxVal)
-    if assert.NotNil(t, keys) {
-        assert.Empty(t, keys)
-    }
+    assert.Nil(t, keys)
 }
 
 func TestMinInt_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
@@ -50,12 +61,23 @@ func TestMinInt_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
     }
 }
 
+func TestMinInt_SingletonMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
+    input := map[string]*big.Int{
+        "a": new(big.Int).SetUint64(2),
+    }
+    minVal, keys := MinInt(input)
+    if assert.NotNil(t, minVal) {
+        assert.Equal(t, uint64(2), minVal.Uint64())
+    }
+    if assert.NotNil(t, keys) {
+        assert.ElementsMatch(t, []string{"a"}, keys)
+    }
+}
+
 func TestMinInt_EmptyMap_mustReturnNilAndEmptyList(t *testing.T) {
     maxVal, keys := MinInt(map[string]*big.Int{})
     assert.Nil(t, maxVal)
-    if assert.NotNil(t, keys) {
-        assert.Empty(t, keys)
-    }
+    assert.Nil(t, keys)
 }
 
 func TestMaxFloat_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
@@ -77,12 +99,24 @@ func TestMaxFloat_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
     }
 }
 
+func TestMaxFloat_SingletonMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
+    input := map[string]*big.Float{
+        "d": new(big.Float).SetFloat64(0),
+    }
+    maxVal, keys := MaxFloat(input)
+    if assert.NotNil(t, maxVal) {
+        v, _ := maxVal.Float64()
+        assert.Equal(t, 0.0, v)
+    }
+    if assert.NotNil(t, keys) {
+        assert.ElementsMatch(t, []string{"d"}, keys)
+    }
+}
+
 func TestMaxFloat_EmptyMap_mustReturnNilAndEmptyList(t *testing.T) {
     maxVal, keys := MinFloat(map[string]*big.Float{})
     assert.Nil(t, maxVal)
-    if assert.NotNil(t, keys) {
-        assert.Empty(t, keys)
-    }
+    assert.Nil(t, keys)
 }
 
 func TestMinFloat_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
@@ -107,9 +141,7 @@ func TestMinFloat_FullMap_mustReturnMinValueAndCorrectKeys(t *testing.T) {
 func TestMinFloat_EmptyMap_mustReturnNilAndEmptyList(t *testing.T) {
     minVal, keys := MinFloat(map[string]*big.Float{})
     assert.Nil(t, minVal)
-    if assert.NotNil(t, keys) {
-        assert.Empty(t, keys)
-    }
+    assert.Nil(t, keys)
 }
 
 func TestMinMaxFloat_FullMap_mustReturnNormMap(t *testing.T) {

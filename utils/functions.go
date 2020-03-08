@@ -4,13 +4,14 @@ import "math/big"
 
 func ex(intValMap map[string]interface{}, id func(val interface{}) string, ord func(a, b interface{}) bool) (interface{}, []string) {
     if len(intValMap) == 0 {
-        return nil, []string{}
+        return nil, nil
     }
     valMap := make(map[string][]string)
     var exVal interface{} = nil
     for key, value := range intValMap {
         if exVal == nil {
             exVal = value
+            valMap[id(value)] = []string{key}
         } else if ord(value, exVal) {
             list, found := valMap[id(value)]
             if found {
