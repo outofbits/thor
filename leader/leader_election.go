@@ -169,9 +169,11 @@ func (jury *Jury) Judge() {
         if len(viableNodeNames) > 0 {
             maxConf, maxConfNodes := utils.MinFloat(mapWithViableLeaders(viableNodeNames, mem.computeHealth()))
             log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
-            if maxConfNodes != nil && len(maxConfNodes) > 0 {
-                if jury.leader == nil || !containsLeader(maxConfNodes, jury.leader.name) {
-                    if len(maxConfNodes) > 0 {
+            _, bestLCNodes := utils.MaxFloat(mapUpTime(maxConfNodes, latestBlockStats))
+            log.Infof("[LEADER JURY] Nodes [%v] considered to be healthiest.", strings.Join(bestLCNodes, ","))
+            if bestLCNodes != nil && len(bestLCNodes) > 0 {
+                if jury.leader == nil || !containsLeader(bestLCNodes, jury.leader.name) {
+                    if len(bestLCNodes) > 0 {
                         // no leader change if in exclusion zone.
                         if len(schedule) > 0 {
                             futureSchedule := api.FilterLeaderLogsBefore(time.Now().Add(-2*jury.settings.TimeSettings.SlotDuration), schedule)
@@ -190,8 +192,7 @@ func (jury *Jury) Judge() {
                             continue
                         }
                         // change leader.
-                        _, bestLeaderCandidate := utils.MaxInt(mapUpTime(maxConfNodes, latestBlockStats))
-                        jury.changeLeader(randomSort(bestLeaderCandidate)[0])
+                        jury.changeLeader(randomSort(bestLCNodes)[0])
                     }
                 }
             }
@@ -202,22 +203,21 @@ func (jury *Jury) Judge() {
     }
 }
 
-func mapUpTime(nodeNames []string, latestBlockStats map[string]api.NodeStatistic) map[string]*big.Int {
-    uptimeMap := make(map[string]*big.Int)
+// maps the uptime to the node name.
+func mapUpTime(nodeNames []string, latestBlockStats map[string]api.NodeStatistic) map[string]*big.Float {
+    uptimeMap := make(map[string]*big.Float)
     for n := range nodeNames {
         name := nodeNames[n]
-        val, _ := new(big.Float).SetFloat64(latestBlockStats[name].UpTime.Seconds()).Int(nil)
-        uptimeMap[name] = val
+        uptimeMap[name] = new(big.Float).SetInt64(int64(latestBlockStats[name].UpTime))
     }
     return uptimeMap
 }
 
 // returns a randomly sorted list of nodes.
 func randomSort(nodes []string) []string {
-    list := nodes[:]
     rand.Seed(time.Now().UnixNano())
-    rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
-    return list
+    rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+    return nodes
 }
 
 // changes the leader to the given name.
