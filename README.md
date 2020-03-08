@@ -5,7 +5,6 @@ Thor is a tool for taming a swarm of Jörmungandr nodes. It provides at the mome
 * Monitoring
 * PoolTool Tip Updating
 * Prometheus Client
-* Email Reporting
 * Leader Election
 
 See the corresponding sections below to get detailed information. An demo orchestration with docker-compose can be found
