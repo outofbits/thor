@@ -1,8 +1,6 @@
 # Builder Image
-FROM golang:alpine3.11
+FROM golang:alpine3.11 AS compiler
 
-RUN apk update
-RUN apk upgrade
 RUN apk add --no-cache git
 
 COPY . /go/src/github.com/sobitada/thor
@@ -17,7 +15,7 @@ LABEL maintainer="Kevin Haller <keivn.haller@outofbits.com>"
 LABEL version="${THOR_VERSION}"
 LABEL description="Monitoring tool for a swarm of Jormungandr nodes."
 
-COPY --from=0 /thor /usr/local/bin/
+COPY --from=compiler /thor /usr/local/bin/
 RUN chmod a+x /usr/local/bin/thor
 
 ENTRYPOINT ["thor"]
