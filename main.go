@@ -13,7 +13,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.2-experimental"
+const ApplicationVersion string = "0.2.2"
 
 func printUsage() {
     fmt.Printf(`Usage:
