@@ -1,6 +1,9 @@
 package monitor
 
 import (
+    "encoding/json"
+    "errors"
+    "github.com/boltdb/bolt"
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/go-cardano"
     "github.com/sobitada/go-jormungandr/api"
@@ -13,6 +16,7 @@ import (
 
 type ScheduleWatchDog struct {
     nodes             []Node
+    db                *bolt.DB
     viableLeaderNodes viableLeaderNodes
     scheduleMap       map[string][]api.LeaderAssignment
     timeSettings      *cardano.TimeSettings
@@ -32,9 +36,16 @@ type listener struct {
 
 // creates a new schedule watchdog for the given nodes and time
 // settings of the block chain. both are required.
-func NewScheduleWatchDog(nodes []Node, timeSettings *cardano.TimeSettings) *ScheduleWatchDog {
+func NewScheduleWatchDog(nodes []Node, timeSettings *cardano.TimeSettings, db *bolt.DB) *ScheduleWatchDog {
     scheduleMap := make(map[string][]api.LeaderAssignment)
     listenerList := make([]chan []api.LeaderAssignment, 0)
+    err := db.Update(func(tx *bolt.Tx) error {
+        _, err := tx.CreateBucketIfNotExists([]byte("schedule"))
+        return err
+    })
+    if err != nil {
+        log.Fatal(err.Error())
+    }
     return &ScheduleWatchDog{
         nodes:        nodes,
         scheduleMap:  scheduleMap,
@@ -44,6 +55,7 @@ func NewScheduleWatchDog(nodes []Node, timeSettings *cardano.TimeSettings) *Sche
             epochMap: map[string][]string{},
             mutex:    &sync.Mutex{},
         },
+        db: db,
         listeners: listener{
             list:  listenerList,
             mutex: &sync.Mutex{},
@@ -153,6 +165,45 @@ func (watchDog *ScheduleWatchDog) informListenerAboutSchedule(schedule []api.Lea
     }
 }
 
+func (watchDog *ScheduleWatchDog) storeToDB(epoch *big.Int, schedule []api.LeaderAssignment) error {
+    err := watchDog.db.Update(func(tx *bolt.Tx) error {
+        b := tx.Bucket([]byte("schedule"))
+        if b == nil {
+            return errors.New("the bucket 'schedule' could not be found")
+        } else {
+            jsonData, err := json.Marshal(schedule)
+            if err == nil && jsonData != nil {
+                return b.Put([]byte(epoch.String()), jsonData)
+            }
+            return err
+        }
+    })
+    return err
+}
+
+func (watchDog *ScheduleWatchDog) getFromDB(epoch *big.Int) ([]api.LeaderAssignment, error) {
+    var storedSchedule *[]api.LeaderAssignment = nil
+    err := watchDog.db.View(func(tx *bolt.Tx) error {
+        b := tx.Bucket([]byte("schedule"))
+        if b == nil {
+            return errors.New("the bucket 'schedule' could not be found")
+        } else {
+            response := b.Get([]byte(epoch.String()))
+            if response != nil {
+                err := json.Unmarshal(response, storedSchedule)
+                if err != nil {
+                    return err
+                }
+            }
+        }
+        return nil
+    })
+    if err == nil && storedSchedule != nil {
+        return *storedSchedule, nil
+    }
+    return nil, err
+}
+
 // watches for the schedules computed for epochs, and checks whether the
 // leader candidates have computed the correct schedule.
 func (watchDog *ScheduleWatchDog) Watch() {
@@ -164,9 +215,15 @@ func (watchDog *ScheduleWatchDog) Watch() {
         currentSlotDate, _ := watchDog.timeSettings.GetSlotDateFor(time.Now())
         watchDog.mutex.RLock()
         schedule, found := watchDog.scheduleMap[currentSlotDate.GetEpoch().String()]
-        if found && schedule != nil {
-            if len(schedule) > 0 {
-                shouldFetchSchedule = true
+        if found && schedule != nil && len(schedule) > 0 {
+            shouldFetchSchedule = false
+        } else {
+            storedSchedule, err := watchDog.getFromDB(currentSlotDate.GetEpoch())
+            if err == nil && storedSchedule != nil {
+                schedule = storedSchedule
+                shouldFetchSchedule = false
+            } else if err != nil {
+                log.Errorf("[SCHEDULE] Could not fetch schedule from the DB. %v", err.Error())
             }
         }
         watchDog.mutex.RUnlock()
@@ -228,6 +285,12 @@ func (watchDog *ScheduleWatchDog) Watch() {
                 watchDog.mutex.Unlock()
                 // inform listeners about schedule.
                 watchDog.informListenerAboutSchedule(newSchedule)
+                // store to DB
+                err := watchDog.storeToDB(currentSlotDate.GetEpoch(), schedule)
+                if err != nil {
+                    log.Errorf("[SCHEDULE] Could not store schedule for epoch %v. %v",
+                        currentSlotDate.GetEpoch().String(), err.Error())
+                }
                 // set the viable leader nodes.
                 watchDog.viableLeaderNodes.mutex.Lock()
                 watchDog.viableLeaderNodes.epochMap[currentSlotDate.GetEpoch().String()] = viableLeaderNodes

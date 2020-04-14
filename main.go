@@ -3,6 +3,7 @@ package main
 import (
     "flag"
     "fmt"
+    "github.com/boltdb/bolt"
     log "github.com/sirupsen/logrus"
     "github.com/sobitada/thor/config"
     "github.com/sobitada/thor/leader"
@@ -10,10 +11,11 @@ import (
     "gopkg.in/yaml.v2"
     "io/ioutil"
     "os"
+    "path"
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.2.2"
+const ApplicationVersion string = "0.3.0-experimental"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -61,6 +63,16 @@ func main() {
                     nodes, err := config.GetNodesFromConfig(conf)
                     if err == nil {
                         if len(nodes) > 0 {
+                            dataDirPath := os.Getenv("THOR_DATA_DIR")
+                            if len(dataDirPath) == 0 {
+                                dataDirPath = "data"
+                            }
+                            dataDirPath = path.Join(dataDirPath, "thor.db")
+                            db, err := bolt.Open(dataDirPath, 0600, nil)
+                            if err != nil {
+                                log.Fatal(err)
+                            }
+                            defer db.Close()
                             timeSettings, err := config.GetTimeSettings(*conf.Blockchain)
                             if err != nil {
                                 log.Warnf("Could not parse the time settings of blockchain. %v", err.Error())
@@ -68,7 +80,7 @@ func main() {
                             // try to establish a schedule watchdog.
                             var watchdog *monitor.ScheduleWatchDog = nil
                             if timeSettings != nil {
-                                watchdog = monitor.NewScheduleWatchDog(nodes, timeSettings)
+                                watchdog = monitor.NewScheduleWatchDog(nodes, timeSettings, db)
                             } else {
                                 log.Warnf("You have to set the time settings for the block chain for schedule watchdog.")
                             }

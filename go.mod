@@ -3,9 +3,8 @@ module github.com/sobitada/thor
 go 1.13
 
 require (
+	github.com/boltdb/bolt v1.3.1
 	github.com/hako/durafmt v0.0.0-20191009132224-3f39dc1ed9f4
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
-	github.com/modern-go/reflect2 v1.0.1
 	github.com/prometheus/client_golang v1.4.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/sobitada/go-cardano v0.0.1
