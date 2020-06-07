@@ -10,5 +10,6 @@ require (
 	github.com/sobitada/go-cardano v0.0.1
 	github.com/sobitada/go-jormungandr v0.0.1
 	github.com/stretchr/testify v1.5.1
+	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71 // indirect
 	gopkg.in/yaml.v2 v2.2.8
 )
