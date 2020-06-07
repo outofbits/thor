@@ -169,7 +169,8 @@ func (jury *Jury) Judge() {
         if len(viableNodeNames) > 0 {
             maxConf, maxConfNodes := utils.MinFloat(mapWithViableLeaders(viableNodeNames, mem.computeHealth()))
             log.Infof("[LEADER JURY] Nodes [%v] have lowest drift (%v).", strings.Join(maxConfNodes, ","), maxConf)
-            _, bestLCNodes := utils.MaxFloat(mapUpTime(maxConfNodes, latestBlockStats))
+            //_, bestLCNodes := utils.MaxFloat(mapUpTime(maxConfNodes, latestBlockStats))
+            bestLCNodes := maxConfNodes
             log.Infof("[LEADER JURY] Nodes [%v] considered to be healthiest.", strings.Join(bestLCNodes, ","))
             if bestLCNodes != nil && len(bestLCNodes) > 0 {
                 if jury.leader == nil || !containsLeader(bestLCNodes, jury.leader.name) {

@@ -94,13 +94,35 @@ func nextEpochStart(slotDate *cardano.FullSlotDate, timeSettings cardano.TimeSet
     return epochDate
 }
 
-func (watchDog *ScheduleWatchDog) checkViability(node Node, epoch *big.Int, schedule []api.LeaderAssignment) {
+func (watchDog *ScheduleWatchDog) checkViability(epoch *big.Int, schedule []api.LeaderAssignment) {
+    for _, node := range watchDog.nodes {
+        go watchDog.checkViabilityOf(node, epoch, schedule)
+    }
+}
+
+func (watchDog *ScheduleWatchDog) checkViabilityAndExclude(epoch *big.Int, schedule []api.LeaderAssignment,
+    exclude []string) {
+    for _, node := range watchDog.nodes {
+        excluded := false
+        for _, excludeName := range exclude {
+            if excludeName == node.Name {
+                excluded = true
+            }
+        }
+        if !excluded {
+            go watchDog.checkViabilityOf(node, epoch, schedule)
+        }
+    }
+}
+
+func (watchDog *ScheduleWatchDog) checkViabilityOf(node Node, epoch *big.Int, schedule []api.LeaderAssignment) {
     if schedule != nil && len(schedule) > 0 {
         for ; ; {
             currentSlotDate, _ := watchDog.timeSettings.GetSlotDateFor(time.Now())
-            if currentSlotDate.GetEpoch().Cmp(epoch) == 0 {
+            if currentSlotDate.GetEpoch().Cmp(epoch) != 0 {
                 break
             }
+            log.Infof("[SCHEDULE] Starting to check viability of '%v'.", node.Name)
             newSchedule, err := node.API.GetLeadersSchedule()
             if err == nil {
                 if newSchedule != nil && len(newSchedule) > 0 {
@@ -186,13 +208,16 @@ func (watchDog *ScheduleWatchDog) getFromDB(epoch *big.Int) ([]api.LeaderAssignm
     err := watchDog.db.View(func(tx *bolt.Tx) error {
         b := tx.Bucket([]byte("schedule"))
         if b == nil {
-            return errors.New("the bucket 'schedule' could not be found")
+            return errors.New("the bucket 'schedule' could not be found.")
         } else {
             response := b.Get([]byte(epoch.String()))
             if response != nil {
-                err := json.Unmarshal(response, storedSchedule)
+                var unmarshalledSchedule []api.LeaderAssignment
+                err := json.Unmarshal(response, &unmarshalledSchedule)
                 if err != nil {
                     return err
+                } else {
+                    storedSchedule = &unmarshalledSchedule
                 }
             }
         }
@@ -204,6 +229,44 @@ func (watchDog *ScheduleWatchDog) getFromDB(epoch *big.Int) ([]api.LeaderAssignm
     return nil, err
 }
 
+func (watchDog *ScheduleWatchDog) fetchFromNodes(epoch *big.Int) ([]api.LeaderAssignment, []string) {
+    var newSchedule []api.LeaderAssignment = nil
+    inputs := make([]interface{}, len(watchDog.nodes))
+    for i, node := range watchDog.nodes {
+        inputs[i] = sInput{
+            node:  node,
+            epoch: epoch,
+        }
+    }
+    viableLeaderNodes := make([]string, 0)
+    responses := threading.Complete(inputs, fetchSchedule)
+    for _, response := range responses {
+        node := response.Context.(Node)
+        if response.Error == nil {
+            schedule := response.Data.([]api.LeaderAssignment)
+            if schedule != nil && len(schedule) > 0 {
+                if newSchedule == nil {
+                    newSchedule = schedule
+                    viableLeaderNodes = append(viableLeaderNodes, node.Name)
+                } else {
+                    testTime := time.Now()
+                    expectedSchedule := api.FilterLeaderLogsBefore(testTime, schedule)
+                    newSchedule = api.FilterLeaderLogsBefore(testTime, newSchedule)
+                    if len(expectedSchedule) == len(newSchedule) {
+                        viableLeaderNodes = append(viableLeaderNodes, node.Name)
+                    } else {
+                        log.Warnf("[SCHEDULE] The leader schedule of node %v is of different length. Expected %v, but was %v.",
+                            node.Name, len(newSchedule), len(schedule))
+                    }
+                }
+            }
+        } else {
+            log.Warnf("[SCHEDULE] Could not fetch the leader schedule for %s.", node.Name)
+        }
+    }
+    return newSchedule, viableLeaderNodes
+}
+
 // watches for the schedules computed for epochs, and checks whether the
 // leader candidates have computed the correct schedule.
 func (watchDog *ScheduleWatchDog) Watch() {
@@ -211,80 +274,52 @@ func (watchDog *ScheduleWatchDog) Watch() {
     var next time.Duration = 0
     for ; ; {
         time.Sleep(next)
-        shouldFetchSchedule := true
+        shouldIssueWatchDog := true
+        shouldFetchFromNodes := true
         currentSlotDate, _ := watchDog.timeSettings.GetSlotDateFor(time.Now())
         watchDog.mutex.RLock()
         schedule, found := watchDog.scheduleMap[currentSlotDate.GetEpoch().String()]
         if found && schedule != nil && len(schedule) > 0 {
-            shouldFetchSchedule = false
+            shouldIssueWatchDog = false
         } else {
             storedSchedule, err := watchDog.getFromDB(currentSlotDate.GetEpoch())
             if err == nil && storedSchedule != nil {
+                log.Infof("[SCHEDULE] Fetched schedule from DB for epoch '%v'.",
+                    currentSlotDate.GetEpoch().String())
+                shouldFetchFromNodes = false
                 schedule = storedSchedule
-                shouldFetchSchedule = false
             } else if err != nil {
                 log.Errorf("[SCHEDULE] Could not fetch schedule from the DB. %v", err.Error())
             }
         }
         watchDog.mutex.RUnlock()
-        if !shouldFetchSchedule {
+        if !shouldIssueWatchDog {
             log.Infof("[SCHEDULE] The schedule has already been fetched for epoch %v. (%v) entries.",
                 currentSlotDate.GetEpoch().String(), len(schedule))
             next = nextEpochStart(currentSlotDate, *watchDog.timeSettings).GetEndDateTime().Sub(time.Now())
             continue
         } else {
-            log.Infof("[SCHEDULE] The schedule for epoch %v will be fetched.",
-                currentSlotDate.GetEpoch().String())
+            viableLeaderNodes := make([]string, 0)
+            //for _, node := range watchDog.nodes {
+            //    viableLeaderNodes = append(viableLeaderNodes, node.Name)
+            //}
             // make none of the leader candidates viable.
             watchDog.viableLeaderNodes.mutex.Lock()
             watchDog.viableLeaderNodes.epochMap[currentSlotDate.GetEpoch().String()] = []string{}
             watchDog.viableLeaderNodes.mutex.Unlock()
             // fetch the schedule
-            var newSchedule []api.LeaderAssignment = nil
-            inputs := make([]interface{}, len(watchDog.nodes))
-            for i, node := range watchDog.nodes {
-                inputs[i] = sInput{
-                    node:  node,
-                    epoch: currentSlotDate.GetEpoch(),
-                }
+            if shouldFetchFromNodes {
+                log.Infof("[SCHEDULE] The schedule for epoch %v will be fetched.",
+                    currentSlotDate.GetEpoch().String())
+                schedule, viableLeaderNodes = watchDog.fetchFromNodes(currentSlotDate.GetEpoch())
             }
-            viableLeaderNodes := make([]string, 0)
-            noneViableLeaderNodes := make([]Node, 0)
-            responses := threading.Complete(inputs, fetchSchedule)
-            for _, response := range responses {
-                node := response.Context.(Node)
-                if response.Error == nil {
-                    schedule := response.Data.([]api.LeaderAssignment)
-                    if schedule != nil && len(schedule) > 0 {
-                        if newSchedule == nil {
-                            newSchedule = schedule
-                            viableLeaderNodes = append(viableLeaderNodes, node.Name)
-                        } else {
-                            testTime := time.Now()
-                            expectedSchedule := api.FilterLeaderLogsBefore(testTime, schedule)
-                            newSchedule = api.FilterLeaderLogsBefore(testTime, newSchedule)
-                            if len(expectedSchedule) == len(newSchedule) {
-                                viableLeaderNodes = append(viableLeaderNodes, node.Name)
-                            } else {
-                                log.Warnf("[SCHEDULE] The leader schedule of node %v is of different length. Expected %v, but was %v.",
-                                    node.Name, len(newSchedule), len(schedule))
-                                noneViableLeaderNodes = append(noneViableLeaderNodes, node)
-                            }
-                        }
-                    } else {
-                        noneViableLeaderNodes = append(noneViableLeaderNodes, node)
-                    }
-                } else {
-                    log.Warnf("[SCHEDULE] Could not fetch the leader schedule for %s.", node.Name)
-                }
-            }
-            if newSchedule != nil && len(newSchedule) > 0 {
+            if schedule != nil && len(schedule) > 0 {
                 // set schedule for this epoch.
                 watchDog.mutex.Lock()
-                watchDog.scheduleMap[currentSlotDate.GetEpoch().String()] = newSchedule
+                watchDog.scheduleMap[currentSlotDate.GetEpoch().String()] = schedule
                 watchDog.mutex.Unlock()
                 // inform listeners about schedule.
-                watchDog.informListenerAboutSchedule(newSchedule)
+                watchDog.informListenerAboutSchedule(schedule)
                 // store to DB
                 err := watchDog.storeToDB(currentSlotDate.GetEpoch(), schedule)
                 if err != nil {
@@ -296,11 +331,9 @@ func (watchDog *ScheduleWatchDog) Watch() {
                 watchDog.viableLeaderNodes.epochMap[currentSlotDate.GetEpoch().String()] = viableLeaderNodes
                 watchDog.viableLeaderNodes.mutex.Unlock()
                 // check viability of non viable nodes periodically.
-                for _, node := range noneViableLeaderNodes {
-                    go watchDog.checkViability(node, currentSlotDate.GetEpoch(), newSchedule)
-                }
+                watchDog.checkViabilityAndExclude(currentSlotDate.GetEpoch(), schedule, viableLeaderNodes)
                 log.Infof("[SCHEDULE] Watchdog fetched %v leader assignments for epoch %v.",
-                    len(newSchedule), currentSlotDate.GetEpoch().String())
+                    len(schedule), currentSlotDate.GetEpoch().String())
                 next = nextEpochStart(currentSlotDate, *watchDog.timeSettings).GetEndDateTime().Sub(time.Now())
             } else {
                 if currentSlotDate.GetSlot().Cmp(new(big.Int).SetInt64(500)) <= 0 {
