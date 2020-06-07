@@ -15,7 +15,7 @@ import (
 )
 
 const ApplicationName string = "thor"
-const ApplicationVersion string = "0.3.0-experimental"
+const ApplicationVersion string = "0.3.0-b1"
 
 func printUsage() {
     fmt.Printf(`Usage:
@@ -88,7 +88,7 @@ func main() {
                             nodeMonitor := monitor.GetNodeMonitor(nodes, config.GetNodeMonitorBehaviour(conf),
                                 parseActions(), watchdog, timeSettings)
                             // try to establish the pool tool updater.
-                            poolTool, err := config.ParsePoolToolConfig(nodeMonitor, conf)
+                            poolTool, err := config.ParsePoolToolConfig(nodeMonitor, watchdog, timeSettings, db, conf)
                             if err != nil {
                                 log.Warnf("The pool tool update could not be started. %v", err.Error())
                             }
